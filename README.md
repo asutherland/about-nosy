@@ -1,6 +1,7 @@
 Current milestone: zilch
 
-Game plan:
+# Game plan
+
 - M1: Visualize DOM, JS memory on an aggregated origin basis.  Reverse engineer
   the aggregation from the memory reporters.  Sparkline area chart over time
   using a sampling interval, small multiples display.
@@ -17,7 +18,8 @@ Game plan:
   by enhancing jsprobes to support probes outside the js/ sub-tree and adding
   the points into the reflow/etc. code.
 
-UI feature brainstorms:
+# UI feature brainstorms
+
 - Optional detailed memory allocation mode where `JS_CreateObject` probes are
   inserted which trigger some type of simple backtrace to find common
   allocation points and just how much memory they allocate.  Requires a
@@ -27,7 +29,8 @@ UI feature brainstorms:
   enhancements believed required unless the GC is compacting/copying, in which
   case we are boned.
 
-Probe brainstorms:
+# Probe brainstorms
+
 - Add a way for JS code to intentionally cause a generic but parameterized
   probe to fire.  For example, hook up to console.trace or something like
   that, and/or have the nsIProbeService expose something.
