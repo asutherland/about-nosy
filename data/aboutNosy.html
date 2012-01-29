@@ -1,0 +1,39 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
+    <base href="resource://aboutnosy/" />
+    <title>about:nosy</title>
+    <style type="text/css">
+      html {
+        font-family: "Lucida Grande", Verdana, sans-serif;
+        font-size: 9pt;
+      }
+      :focus { outline: none; }
+      a[href] { text-decoration: none }
+    </style>
+<link rel="shortcut icon" href="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAACAAAAAgCAMAAABEpIrGAAAAAXNSR0IArs4c6QAAASBQTFRFAAAABAQECAgIEhISExMTFBQUFRUVFxcXGhoaHBwcHh4eHx8fIiIiIyMjJSUlJiYmJycnKSkpLy8vMDAwMjIyNjY2Nzc3ODg4PDw8Pz8/QUFBR0dHS0tLT09PUFBQVFRUWVlZWlpaXl5eYGBgZmZmaGhobGxsbW1tb29vdHR0dnZ2e3t7fHx8fX19fn5+AJn/hYWFiIiIjo6OZpn/l5eXmZmZoKCgpKSkpaWlpqamp6enqKioq6urrq6usLCwsrKytbW1ubm5vb29vr6+wMDAwcHBxcXFyMjIzs7O09PT1tbW19fX3d3d4ODg4+Pj5OTk6Ojo6enp6+vr7Ozs7e3t7u7u7+/v8fHx9vb29/f3+Pj4+fn5+vr6/f39/v7+////eXVP6wAAAQBJREFUOMu903szQlEUh+EjcXKLJIQQURRC7pcUuXehopLzfv9vYZ/L0Eh7M4z1x2/PrHlm7X3WzNFQlIYWsM/OYPpIAW68LxZoxHQ91oDzWbdvv9rzCM3eBxMQ2bLA2lShEFwHT6p6N89yEjIz1gRKA08mGDyD9BCMbebF6Pv+JkuHNiC5YqarAmUX3C64J3Iwd2CM1BxQ8+ZbJoBx7Ier8ctFHMBeWGTcfEMCQtfPux7RnAxm34EREFmP6nq0Diej3aEL0Tzte5V9P6RWpRukMlx0wIaoLzbYtYMUfKz6j0E7/j5oz98DO/8HqP4LNdgW1Tkl4NMVrU0l+Okj5fUGYrk6y74FcmEAAAAASUVORK5CYII=" />
+<script type="text/javascript" src="lib/require.js"></script>
+  <script>
+    require({
+      baseUrl: "resource://aboutnosy/",
+      paths: {
+        "text": "lib/text",
+      },
+      packages: [
+        { name: "aboutnosy", location: "lib/aboutnosy" },
+
+        { name: "wmsy", location: "deps/lib/wmsy" },
+      ],
+      ready: function() {
+        require(["aboutnosy/ui/app"],
+          function(mainModule) {
+            mainModule.main(document);
+        });
+      },
+    });
+  </script>
+  </head>
+<body id="body" style="border: 0; padding: 0; margin: 0;">
+</body>
+</html>
