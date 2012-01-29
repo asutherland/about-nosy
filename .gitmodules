@@ -1,0 +1,3 @@
+[submodule "deps/wmsy"]
+	path = deps/wmsy
+	url = git://github.com/asutherland/wmsy.git

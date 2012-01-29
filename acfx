@@ -1,0 +1,9 @@
+#!/bin/bash
+
+CPCMD="rsync -avL"
+
+## Source Tree Location => jetpack 'data' location
+
+$CPCMD deps/wmsy/lib/wmsy data/deps/
+
+cfx "$@"
