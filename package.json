@@ -1,0 +1,8 @@
+{
+  "name": "about-nosy",
+  "fullName": "about:nosy",
+  "description": "Visualize what's going on in your Firefox",
+  "author": "Andrew Sutherland <asutherland@asutherland.org>",
+  "license": "MPL 2.0/GPL 2.0/LGPL 2.1",
+  "version": "0.1"
+}
