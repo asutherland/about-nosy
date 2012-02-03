@@ -426,8 +426,8 @@ MemFrobConsumer.prototype = {
     }
 
     for (i = 0; i < windows.removedOuter.length; i++) {
+      console.log("outer removal", windows.removedOuter[i]);
       tab = this.tabsByOuterWindowId[windows.removedOuter[i]];
-      console.log("outer removal", tab);
       this.tabsView.remove(tab);
       tab.statlog.die();
       tab.innerWindows.map(killInner);
@@ -438,10 +438,10 @@ MemFrobConsumer.prototype = {
     for (i = 0; i < windows.removedInner.length; i += 2) {
       outerId = windows.removedInner[i];
       innerId = windows.removedInner[i+1];
+      console.log("inner removal", outerId, innerId);
 
       tab = this.tabsByOuterWindowId[outerId];
       innerSummary = tab.getInnerWindowById(innerId);
-      console.log("inner removal", innerSummary);
       killInner(innerSummary);
       tab.innerWindowsView.remove(innerSummary);
     }
@@ -529,8 +529,6 @@ MemFrobConsumer.prototype = {
                this.statKing.makeStatlog(compData.statId));
       this._compartmentsByStatId[compData.statId] = cmpt;
       originThing.trackCompartment(cmpt);
-
-      console.log("binned", compData, "cmpt", cmpt, "in", originThing);
     }
 
     // - removed

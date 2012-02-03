@@ -89,15 +89,21 @@ window.FROBBED = msg.data;
 
 function hookupChromeBridge(app) {
   app._sendReq = function(data) {
+    if (window.sendUiRequest) {
+      app._sendReq = window.sendUiRequest;
+      window.sendUiRequest(data);
+      return;
+    }
+    setTimeout(app._sendReq, 100);
+    /*
     var event = document.createEvent("MessageEvent");
     event.initMessageEvent('uiReq', false, false,
                            JSON.stringify(data), '*', null, null, null);
     window.dispatchEvent(event);
+    */
   };
 
-  window.addEventListener('uiData', function(evt) {
-    app._receive(JSON.parse(evt.data));
-  }, false);
+  window.receiveUiData = app._receive.bind(app);
 }
 
 exports.main = function(doc) {
