@@ -2,6 +2,8 @@
 .url {
   color: #08c;
   text-overflow: ellipsis;
+  overflow: hidden; 
+  white-space:nowrap;
   width: 570px;
   display: inline-block;
 }
@@ -9,6 +11,8 @@
   font-size: 150%;
   color: #08c;
   text-overflow: ellipsis;
+  overflow: hidden; 
+  white-space:nowrap;
   width: 600px;
   display: inline-block;
 }
