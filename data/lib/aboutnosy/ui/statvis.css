@@ -1,2 +1,13 @@
 
+#barvis {
+  #root {
+    display: inline-block;
+    background-color: #f8f8f8;
+    margin: 2px;
+  }
+
+  #rect {
+    fill: #444;
+  }
+}
 

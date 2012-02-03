@@ -10,12 +10,14 @@ define(
   [
     'wmsy/wmsy',
     'wmsy/wlib/dates',
+    './statvis',
     'text!./summaries.css',
     'exports'
   ],
   function(
     $wmsy,
     $wlib_dates,
+    $ui_statvis,
     $_css,
     exports
   ) {
@@ -36,6 +38,7 @@ wy.defineWidget({
     header: {
       url: wy.bind(['topWindow', 'url']),
       date: wy.libWidget({ type: 'relative-date' }, 'openedAt'),
+      statvis: wy.widget({ type: 'barvis' }, 'statlog'),
     },
     innerWindows: wy.vertList({ type: 'summary' }, 'innerWindowsView'),
   },
@@ -51,6 +54,7 @@ wy.defineWidget({
     header: {
       url: wy.bind('url'),
       date: wy.libWidget({ type: 'relative-date' }, 'createdAt'),
+      statvis: wy.widget({ type: 'barvis' }, 'statlog'),
     },
   },
 });

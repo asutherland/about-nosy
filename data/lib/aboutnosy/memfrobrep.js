@@ -60,6 +60,7 @@ function InnerWindowSummary(id, url, statlog) {
   this.id = id;
   this.url = url;
   this.origin = null;
+  this.statlog = statlog;
 }
 InnerWindowSummary.prototype = {
   kind: 'inner-window',
@@ -106,7 +107,8 @@ CompartmentSummary.prototype = {
 //  ArrayBufferView classes, but for now we just use arrays because it's
 //  harder to screw up.
 
-function Statlog(statId, stats) {
+function Statlog(statKing, statId, stats) {
+  this.statKing = statKing;
   this.statId = statId;
   this.stats = stats;
   this.forwardTo = null;
@@ -114,7 +116,8 @@ function Statlog(statId, stats) {
 Statlog.prototype = {
 };
 
-function AggrStatlog(summaryStats) {
+function AggrStatlog(statKing, summaryStats) {
+  this.statKing = statKing;
   this.stats = summaryStats;
 }
 AggrStatlog.prototype = {
@@ -127,30 +130,37 @@ AggrStatlog.prototype = {
  * Hands out `Statlog` instances and processes time series streams, including
  *  value normalization.
  */
-function StatMaster(numPoints) {
+function StatKing(numPoints) {
   this.numPoints = numPoints;
   this._empty = new Array(numPoints);
   for (var i = 0; i < numPoints; i++) {
     this._empty[i] = 0;
   }
 
+  this._maxes = this._empty.concat();
+
   // Yes, this would want to get 'mo clever too.  Of course, if we force
   //  upstream to get 'mo clever and maintain a compact stat range, we don't
   //  need to be clever...
   this.statIdsToStatlogs = {};
   this.aggrs = [];
+
+  // we will update this on-thee-fly
+  this.chartMax = 16 * 1024 * 1024;
 }
-StatMaster.prototype = {
+StatKing.prototype = {
   makeStatlog: function(statId) {
     var stats = this._empty.concat(),
-        statlog = new Statlog(statId, stats);
+        statlog = new Statlog(this, statId, stats);
     this.statIdsToStatlogs[statId] = statlog;
     return statlog;
   },
 
   makeAggrStatlog: function() {
     var stats = this._empty.concat();
-    return new AggrStatlog(stats);
+    var statlog = new AggrStatlog(this, stats);
+    this.aggrs.push(statlog);
+    return statlog;
   },
 
   /**
@@ -165,28 +175,57 @@ StatMaster.prototype = {
     // - introduce a new zero in all aggregations
     var i, aggrs = this.aggrs;
     for (i = 0; i < aggrs.length; i++) {
-      aggrs.stats.pop();
-      aggrs.stats.unshift(0);
+      var aggr = aggrs[i];
+      aggr.stats.pop();
+      aggr.stats.unshift(0);
     }
 
     // - process the stream
+    var maxValThisCycle = 0;
     const dlen = data.length, idsToLogs = this.statIdsToStatlogs;
     for (i = 0; i < dlen;) {
       var statId = data[i++], val = data[i++],
           statlog = idsToLogs[statId];
-      statlog.pop();
-      statlog.push(val);
-      if (statlog.forwardTo)
-        statlog.forwardTo[0] += val;
+      statlog.stats.pop();
+      statlog.stats.unshift(val);
+
+      if (statlog.forwardTo) {
+        var summedVal = statlog.forwardTo[0] + val;
+        statlog.forwardTo[0] = summedVal;
+        if (summedVal > maxValThisCycle)
+          maxValThisCycle = summedVal;
+      }
+      else if (val > maxValThisCycle) {
+        maxValThisCycle = val;
+      }
     }
+
+    // - determine effective max value
+    var maxes = this._maxes, maxChartVal = maxValThisCycle, curMaxVal;
+    maxes.pop();
+    maxes.unshift(maxValThisCycle);
+    for (i = 1; i < maxes.length; i++) {
+      curMaxVal = maxes[i];
+      if (curMaxVal > maxChartVal)
+        maxChartVal = curMaxVal;
+    }
+    // lower bound the maximum value for sanity purposes
+    if (maxChartVal < (1 * 1024))
+      maxChartVal = (1 * 1024);
+    // XXX consider rounding to a nice human readable megabyte size...
+    this.chartMax = maxChartVal;
+
+    console.log("maxValThisCycle", maxValThisCycle, "chartMax", this.chartMax);
   }
 };
 
 ////////////////////////////////////////////////////////////////////////////////
 // Rep Building
 
+const NUM_POINTS = 60;
+
 function MemFrobConsumer() {
-  this.statMaster = new StatMaster();
+  this.statKing = new StatKing(NUM_POINTS);
 
   this.tabs = [];
   this.tabsByOuterWindowId = {};
@@ -203,6 +242,8 @@ function MemFrobConsumer() {
   this.subsystemsView = new $vs_array.ArrayViewSlice(this.subsystems,
                                                      NullViewListener);
 
+  this._issueUiUpdate = null;
+  this._issueBlanketUiUpdate = null;
 }
 exports.MemFrobConsumer = MemFrobConsumer;
 MemFrobConsumer.prototype = {
@@ -240,20 +281,22 @@ MemFrobConsumer.prototype = {
    * - Origins: We blame origins for their DOM usage.
    */
   _consumeWindowsBlock: function(windows, timestamp) {
-console.log("- outer");
     var i, outerId, statlogger, tab, uiUpdate = this._issueUiUpdate;
+
+    // - outer
     for (i = 0; i < windows.addedOuter.length; i++) {
       // this got immediately serialized to keep the inner windows out
       var outerData = JSON.parse(windows.addedOuter[i]);
 
       tab = new TabSummary(outerData.id,
                            timestamp,
-                           this.statMaster.makeAggrStatlog(),
+                           this.statKing.makeAggrStatlog(),
                            outerData.topId);
       this.tabsByOuterWindowId[outerData.id] = tab;
       this.tabsView.add(tab);
     }
-console.log("- inner");
+
+    // - inner
     for (i = 0; i < windows.addedInner.length; i += 2) {
       outerId = windows.addedInner[i];
       var innerData = windows.addedInner[i+1];
@@ -262,9 +305,9 @@ console.log("- inner");
       var innerSummary = new InnerWindowSummary(
                            innerData.id,
                            innerData.url,
-                           this.statMaster.makeStatlog(innerData.statId));
+                           this.statKing.makeStatlog(innerData.statId));
       tab.innerWindowsView.add(innerSummary);
-      //tab.statlog.aggregate(innerSummary.statlog);
+      tab.statlog.aggregate(innerSummary.statlog);
 
       // (this will only occur durlng the initial outer window add case)
       if (tab._topId === innerData.id) {
@@ -272,7 +315,8 @@ console.log("- inner");
         uiUpdate("tab", tab);
       }
     }
-console.log("- modified");
+
+    // - modified
     for (i = 0; i < windows.modifiedOuter.length; i++) {
       var outerDelta = windows.modifiedOuter[i];
 
@@ -284,7 +328,7 @@ console.log("- modified");
 
     var self = this;
     function removeInner(innerSummary) {
-      self.statMaster.kill(innerSummary.statlog);
+      self.statKing.kill(innerSummary.statlog);
       self._forgetOrigin(innerSummary);
     }
 
@@ -334,7 +378,9 @@ console.log("- modified");
     this._consumeShellsBlock(wireRep.shells);
     this._consumeCompartmentsBlock(wireRep.compartments);
 
-    this.statMaster.processStatisticsStream(wireRep.statistics);
+    this.statKing.processStatisticsStream(wireRep.statistics);
+    console.log("issuing chart build", this.statKing.chartMax);
+    this._issueBlanketUiUpdate('statvis');
   },
 
 };

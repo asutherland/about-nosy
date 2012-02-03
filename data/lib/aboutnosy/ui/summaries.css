@@ -10,7 +10,6 @@
   color: #888;
 }
 
-
 #tab-summary {
   #root {
     border-radius: 4px;
@@ -47,10 +46,12 @@
 #inner-window-summary {
   #url {
     .url;
+    display: inline-block;
     width: 300px;
   }
   #date {
     .date;
+    display: inline-block;
   }
 }
 #origin-summary {

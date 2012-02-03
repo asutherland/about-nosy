@@ -72,7 +72,7 @@ window.FROBBED = msg.data;
       catch(ex) {
         // (If we don't do this, then our screw-ups disappear into the ether.
         // The platform has come so far, and yet still has so far to go.)
-        console.error("Exception in processing:", ex);
+        console.error("Exception in processing:", ex, ex.stack);
       }
     }
   },
@@ -81,8 +81,9 @@ window.FROBBED = msg.data;
     this._sendReq({ type: 'setInterval', intervalMS: this.sampleIntervalMS });
   },
 
-  attachToUI: function(updateHelper) {
+  attachToUI: function(updateHelper, blanketUpdateHelper) {
     this.frobConsumer._issueUiUpdate = updateHelper;
+    this.frobConsumer._issueBlanketUiUpdate = blanketUpdateHelper;
   },
 };
 
@@ -108,8 +109,10 @@ exports.main = function(doc) {
   binder.bind({type: "root", obj: app});
 
   var idSpace = binder.idSpace;
-  app.attachToUI(//idSpace.updateUsingObject.bind(idSpace));
-    function(space, obj) { console.log("updating", space, obj); idSpace.updateUsingObject(space, obj); });
+  app.attachToUI(
+    idSpace.updateUsingObject.bind(idSpace),
+    idSpace.updateAllObjectsInSpace.bind(idSpace)
+  );
 
   app.connect();
 };
