@@ -6,6 +6,11 @@
     margin: 2px;
   }
 
+  #label {
+    font-size: 8px;
+    fill: #aaa;
+  }
+
   #rect {
     fill: #444;
   }

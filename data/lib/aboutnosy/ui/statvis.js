@@ -35,15 +35,16 @@ wy.defineWidget({
   idspaces: ['statvis'],
   impl: {
     postInit: function() {
-      this._width = 4 * this.obj.statKing.numPoints;
-      this._height = 30;
+      this._labelWidth = 24;
+      this._width = 4 * this.obj.statKing.numPoints + this._labelWidth;
+      this._height = 24;
       this._x = null;
       this._y = null;
       this._makeVis();
     },
     _makeVis: function() {
       var statlog = this.obj, stats = statlog.stats;
-      const w = 4, h = this._height;
+      const w = 4, h = this._height, lw = this._labelWidth;
 
       var x = this._x = $d3.scale.linear()
         .domain([0, 1])
@@ -58,16 +59,29 @@ wy.defineWidget({
 
       this.yFunc = function(d) { return h - y(d); };
 
-      var rectClass = this.__cssClassBaseName + "rect";
+      var rectClass = this.__cssClassBaseName + "rect",
+          labelClass = this.__cssClassBaseName + "label";
 
       vis.selectAll("rect")
           .data(stats)
         .enter().append("rect")
           .attr("class", rectClass)
-          .attr("x", function(d, i) { return x(i); })
+          .attr("x", function(d, i) { return lw + x(i); })
           .attr("y", this.yFunc)
           .attr("width", w - 1)
           .attr("height", y);
+
+      // label!
+      this.identityFunc = function(d) { return d; };
+      vis.selectAll("text")
+          .data([statlog.statKing.chartMaxStr])
+        .enter().append("text")
+          .attr("class", labelClass)
+          .attr("x", lw - 2)
+          .attr("y", 0)
+          .attr("dy", 10)
+          .attr("text-anchor", "end")
+          .text(this.identityFunc);
     },
     _updateVis: function() {
       var statlog = this.obj, y = this._y;
@@ -79,6 +93,10 @@ wy.defineWidget({
         .data(statlog.stats)
         .attr("y", this.yFunc)
         .attr("height", y);
+
+      this.vis.selectAll("text")
+        .data([statlog.statKing.chartMaxStr])
+        .text(this.identityFunc);
     },
     update: function(recursive) {
       this._updateVis();

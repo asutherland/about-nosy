@@ -48,6 +48,15 @@ function TabSummary(id, openedAt, statlog, topId) {
 }
 TabSummary.prototype = {
   kind: 'tab',
+
+  getInnerWindowById: function(id) {
+    for (var i = 0; i < this.innerWindows.length; i++) {
+      if (this.innerWindows[i].id === id)
+        return this.innerWindows[i];
+    }
+
+    return null;
+  },
 };
 
 /**
@@ -114,6 +123,9 @@ function Statlog(statKing, statId, stats) {
   this.forwardTo = null;
 }
 Statlog.prototype = {
+  die: function() {
+    delete this.statKing.statIdsToStatlogs[this.statId];
+  },
 };
 
 function AggrStatlog(statKing, summaryStats) {
@@ -123,6 +135,12 @@ function AggrStatlog(statKing, summaryStats) {
 AggrStatlog.prototype = {
   aggregate: function(statlog) {
     statlog.forwardTo = this.stats;
+  },
+
+  die: function() {
+    var index = this.statKing.aggrs.indexOf(this);
+    if (index !== -1)
+      this.statKing.aggrs.splice(index, 1);
   },
 };
 
@@ -147,6 +165,7 @@ function StatKing(numPoints) {
 
   // we will update this on-thee-fly
   this.chartMax = 16 * 1024 * 1024;
+  this.chartMaxStr = '16M';
 }
 StatKing.prototype = {
   makeStatlog: function(statId) {
@@ -210,12 +229,19 @@ StatKing.prototype = {
         maxChartVal = curMaxVal;
     }
     // lower bound the maximum value for sanity purposes
-    if (maxChartVal < (1 * 1024))
-      maxChartVal = (1 * 1024);
+    const meg = 1024 * 1024;
+    if (maxChartVal < meg)
+      maxChartVal = meg;
+
+    // round up to the next megabyte
+    var modMeg = maxChartVal % meg;
+    if (modMeg)
+      maxChartVal += (1024 * 1024 - modMeg);
+    var megs = Math.floor(maxChartVal / meg);
+    this.chartMaxStr = megs + "M";
+
     // XXX consider rounding to a nice human readable megabyte size...
     this.chartMax = maxChartVal;
-
-    console.log("maxValThisCycle", maxValThisCycle, "chartMax", this.chartMax);
   }
 };
 
@@ -281,7 +307,8 @@ MemFrobConsumer.prototype = {
    * - Origins: We blame origins for their DOM usage.
    */
   _consumeWindowsBlock: function(windows, timestamp) {
-    var i, outerId, statlogger, tab, uiUpdate = this._issueUiUpdate;
+    var i, outerId, innerId, statlogger, tab, innerSummary,
+        uiUpdate = this._issueUiUpdate;
 
     // - outer
     for (i = 0; i < windows.addedOuter.length; i++) {
@@ -302,10 +329,10 @@ MemFrobConsumer.prototype = {
       var innerData = windows.addedInner[i+1];
 
       tab = this.tabsByOuterWindowId[outerId];
-      var innerSummary = new InnerWindowSummary(
-                           innerData.id,
-                           innerData.url,
-                           this.statKing.makeStatlog(innerData.statId));
+      innerSummary = new InnerWindowSummary(
+                       innerData.id,
+                       innerData.url,
+                       this.statKing.makeStatlog(innerData.statId));
       tab.innerWindowsView.add(innerSummary);
       tab.statlog.aggregate(innerSummary.statlog);
 
@@ -323,21 +350,33 @@ MemFrobConsumer.prototype = {
       // - update topWindow, including generating an update
       tab = this.tabsByOuterWindowId[outerDelta.id];
       tab._topId = outerDelta.topId;
+      tab.topWindow = tab.getInnerWindowById(tab._topId);
       uiUpdate("tab", tab);
     }
 
     var self = this;
-    function removeInner(innerSummary) {
-      self.statKing.kill(innerSummary.statlog);
-      self._forgetOrigin(innerSummary);
+    function killInner(innerSummary) {
+      innerSummary.statlog.die();
+      //self._forgetOrigin(innerSummary);
     }
 
     for (i = 0; i < windows.removedOuter.length; i++) {
+      tab = this.tabsByOuterWindowId[windows.removedOuter[i]];
+      this.tabsView.remove(tab);
+      tab.statlog.die();
+      tab.innerWindows.map(killInner);
     }
 
     // invariant: We don't hear about inner removals for outers removed in the
     //  same block.
-    for (i = 0; i < windows.removedInner.length; i++) {
+    for (i = 0; i < windows.removedInner.length; i += 2) {
+      outerId = windows.removedInner[i];
+      innerId = windows.removedInner[i+1];
+
+      tab = this.tabsByOuterWindowId[outerId];
+      innerSummary = tab.getInnerWindowById(innerId);
+      killInner(innerSummary);
+      tab.innerWindowsView.remove(innerSummary);
     }
   },
 
