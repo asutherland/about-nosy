@@ -87,7 +87,6 @@ wy.defineWidget({
       var statlog = this.obj, y = this._y;
       // refresh y-axis scale
       y.domain([0, statlog.statKing.chartMax]);
-      console.log("update, y: domain", y.domain(), "range", y.range());
 
       this.vis.selectAll("rect")
         .data(statlog.stats)

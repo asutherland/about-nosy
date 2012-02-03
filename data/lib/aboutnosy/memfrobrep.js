@@ -33,9 +33,9 @@ var NullViewListener = {
 /**
  * A tab's memory usage is the sum of all its inner windows' costs.
  */
-function TabSummary(id, openedAt, statlog, topId) {
+function TabSummary(id, createdAt, statlog, topId) {
   this.id = id;
-  this.openedAt = openedAt;
+  this.createdAt = createdAt;
 
   this._topId = topId;
   this.topWindow = null;
@@ -75,38 +75,88 @@ InnerWindowSummary.prototype = {
   kind: 'inner-window',
 };
 
+var AggregatingSummary = {
+  trackCompartment: function(cmpt) {
+    this.compartmentsView.add(cmpt);
+    this.statlog.aggregate(cmpt.statlog);
+    cmpt.owner = this;
+  },
+  forgetCompartment: function(cmpt) {
+    this.compartmentsView.remove(cmpt);
+  },
+};
+
 /**
  * Aggregate resource usage for a given origin: its JS compartment, all DOM,
  *  all layout.
  */
-function OriginSummary(originUrl, createdAt) {
+function OriginSummary(originUrl, createdAt, statlog) {
   this.url = originUrl;
   this.createdAt = createdAt;
+  this.statlog = statlog;
 
   this.relatedThings = [];
   this.relatedThingsView = new $vs_array.ArrayViewSlice(this.relatedThings,
                                                         NullViewListener);
+
+  this.compartments = [];
+  this.compartmentsView = new $vs_array.ArrayViewSlice(this.compartments,
+                                                       NullViewListener);
 }
 OriginSummary.prototype = {
+  __proto__: AggregatingSummary,
   kind: 'origin',
+  sentinel: false,
+
+  trackUser: function() {
+  },
+  forgetUser: function() {
+  },
 };
 
-function ExtensionSummary() {
+function ExtensionSummary(name, statlog) {
+  this.name = name;
+  this.statlog = statlog;
+
+  this.compartments = [];
+  this.compartmentsView = new $vs_array.ArrayViewSlice(this.compartments,
+                                                       NullViewListener);
 }
 ExtensionSummary.prototype = {
+  __proto__: AggregatingSummary,
   kind: 'extension',
+  sentinel: false,
 };
 
-function SubsystemSummary() {
+function SubsystemSummary(name, statlog) {
+  this.name = name;
+  this.statlog = statlog;
+
+  this.compartments = [];
+  this.compartmentsView = new $vs_array.ArrayViewSlice(this.compartments,
+                                                       NullViewListener);
 }
 SubsystemSummary.prototype = {
+  __proto__: AggregatingSummary,
   kind: 'subsystem',
+  sentinel: false,
 };
 
-function CompartmentSummary() {
+function CompartmentSummary(type, url, addrStr, createdAt, statlog) {
+  this.type = type;
+  this.url = url;
+  this.addrStr = addrStr;
+
+  this.createdAt = createdAt;
+  this.statlog = statlog;
+
+  this.displayName = url || addrStr || type;
+
+  this.owner = null;
 }
 CompartmentSummary.prototype = {
   kind: 'compartment',
+  sentinel: false,
 };
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -255,10 +305,25 @@ function MemFrobConsumer() {
 
   this.tabs = [];
   this.tabsByOuterWindowId = {};
-  this.origins = [];
+
+  this._originToThing = {};
+
+  this._mysteriousOrigin = new OriginSummary("anon", new Date(),
+                                             this.statKing.makeAggrStatlog());
+  this._mysteriousOrigin.sentinel = true;
+  this.origins = [this._mysteriousOrigin];
   this.originsByUrl = {};
+
+  this.compartments = [];
+  this._compartmentsByStatId = {};
+
   this.extensions = [];
-  this.subsystems = [];
+  this.extensionsByOriginUrl = {};
+
+  this._appCatchAll = new SubsystemSummary("Other",
+                                           this.statKing.makeAggrStatlog());
+  this._appCatchAll.sentinel = true;
+  this.subsystems = [this._appCatchAll];
 
   this.tabsView = new $vs_array.ArrayViewSlice(this.tabs, NullViewListener);
   this.originsView = new $vs_array.ArrayViewSlice(this.origins,
@@ -275,7 +340,7 @@ exports.MemFrobConsumer = MemFrobConsumer;
 MemFrobConsumer.prototype = {
   _trackOrigin: function(originUrl, timestamp, thing) {
     var origin;
-    if (this.originsByUrl.hasOwnProperty(originUrl)) {
+    if (this._originToThing.hasOwnProperty(originUrl)) {
       origin = this.originsByUrl[originUrl];
     }
     else {
@@ -362,6 +427,7 @@ MemFrobConsumer.prototype = {
 
     for (i = 0; i < windows.removedOuter.length; i++) {
       tab = this.tabsByOuterWindowId[windows.removedOuter[i]];
+      console.log("outer removal", tab);
       this.tabsView.remove(tab);
       tab.statlog.die();
       tab.innerWindows.map(killInner);
@@ -375,6 +441,7 @@ MemFrobConsumer.prototype = {
 
       tab = this.tabsByOuterWindowId[outerId];
       innerSummary = tab.getInnerWindowById(innerId);
+      console.log("inner removal", innerSummary);
       killInner(innerSummary);
       tab.innerWindowsView.remove(innerSummary);
     }
@@ -400,7 +467,77 @@ MemFrobConsumer.prototype = {
     }
   },
 
-  _consumeCompartmentsBlock: function() {
+  /**
+   * Consume compartments, attempting to allocate them to an origin, a subystem,
+   *  or an extension.
+   */
+  _consumeCompartmentsBlock: function(comps, timestamp) {
+    var i, originThing, cmpt;
+
+    // - added
+    for (i = 0; i < comps.added.length; i++) {
+      var compData = comps.added[i];
+
+      switch (compData.type) {
+        // - system: extension or subsystem
+        case 'sys':
+          // we can bin it and blame an extension or subsystem with a url
+          if (compData.urlOrigin) {
+            if (!this.extensionsByOriginUrl.hasOwnProperty(compData.urlOrigin)){
+              originThing = new ExtensionSummary(compData.urlOrigin,
+                                                 this.statKing.makeAggrStatlog());
+              this.extensionsByOriginUrl[compData.urlOrigin] = originThing;
+              this.extensionsView.add(originThing);
+            }
+            else {
+              originThing = this.extensionsByOriginUrl[compData.urlOrigin];
+            }
+          }
+          else {
+            originThing = this._appCatchAll;
+          }
+          break;
+
+        // - atoms, null: catch-all subsystem
+        case 'atoms':
+        case 'null':
+          originThing = this._appCatchAll;
+          break;
+
+        // - anon: mysterious origin! :)
+        case 'anon':
+          originThing = this._mysteriousOrigin;
+          break;
+
+        // - web: an actual content (shared) origin
+        case 'web':
+          if (!this.originsByUrl.hasOwnProperty(compData.url)) {
+            originThing = new OriginSummary(
+                            compData.url, timestamp,
+                            this.statKing.makeAggrStatlog());
+            this.originsView.add(originThing);
+          }
+          else {
+            originThing = this.originsByUrl[compData.url];
+          }
+          break;
+      }
+
+      cmpt = new CompartmentSummary(
+               compData.type, compData.url, compData.addrStr,
+               timestamp,
+               this.statKing.makeStatlog(compData.statId));
+      this._compartmentsByStatId[compData.statId] = cmpt;
+      originThing.trackCompartment(cmpt);
+
+      console.log("binned", compData, "cmpt", cmpt, "in", originThing);
+    }
+
+    // - removed
+    for (i = 0; i < comps.removed.length; i++) {
+      cmpt = this._compartmentsByStatId[comps.removed[i]];
+      cmpt.owner.forgetCompartment(cmpt);
+    }
   },
 
   _consumeStatistics: function(stats) {
@@ -415,10 +552,9 @@ MemFrobConsumer.prototype = {
 
     this._consumeWindowsBlock(wireRep.windows, timestamp);
     this._consumeShellsBlock(wireRep.shells);
-    this._consumeCompartmentsBlock(wireRep.compartments);
+    this._consumeCompartmentsBlock(wireRep.compartments, timestamp);
 
     this.statKing.processStatisticsStream(wireRep.statistics);
-    console.log("issuing chart build", this.statKing.chartMax);
     this._issueBlanketUiUpdate('statvis');
   },
 

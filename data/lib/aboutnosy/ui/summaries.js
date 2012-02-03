@@ -37,7 +37,7 @@ wy.defineWidget({
   structure: {
     header: {
       url: wy.bind(['topWindow', 'url']),
-      date: wy.libWidget({ type: 'relative-date' }, 'openedAt'),
+      date: wy.libWidget({ type: 'relative-date' }, 'createdAt'),
       statvis: wy.widget({ type: 'barvis' }, 'statlog'),
     },
     innerWindows: wy.vertList({ type: 'summary' }, 'innerWindowsView'),
@@ -60,6 +60,21 @@ wy.defineWidget({
 });
 
 wy.defineWidget({
+  name: 'compartment-summary',
+  constraint: {
+    type: 'summary',
+    obj: { kind: 'compartment' },
+  },
+  structure: {
+    header: {
+      displayName: wy.bind('displayName'),
+      date: wy.libWidget({ type: 'relative-date' }, 'createdAt'),
+      statvis: wy.widget({ type: 'barvis' }, 'statlog'),
+    },
+  },
+});
+
+wy.defineWidget({
   name: 'origin-summary',
   constraint: {
     type: 'summary',
@@ -68,9 +83,10 @@ wy.defineWidget({
   structure: {
     header: {
       url: wy.bind('url'),
-      date: wy.libWidget({ type: 'relative-date' }, 'openedAt'),
+      date: wy.libWidget({ type: 'relative-date' }, 'createdAt'),
+      statvis: wy.widget({ type: 'barvis' }, 'statlog'),
     },
-    innerWindows: wy.vertList({ type: 'summary' }, 'innerWindowsView'),
+    compartments: wy.vertList({ type: 'summary' }, 'compartmentsView'),
   },
 });
 
@@ -83,9 +99,10 @@ wy.defineWidget({
   structure: {
     header: {
       name: wy.bind('name'),
-      date: wy.libWidget({ type: 'relative-date' }, 'openedAt'),
+      date: wy.libWidget({ type: 'relative-date' }, 'createdAt'),
+      statvis: wy.widget({ type: 'barvis' }, 'statlog'),
     },
-    compartments: wy.vertList({ type: 'summary' }, 'compartments'),
+    compartments: wy.vertList({ type: 'summary' }, 'compartmentsView'),
   },
 });
 
@@ -97,10 +114,11 @@ wy.defineWidget({
   },
   structure: {
     header: {
-      url: wy.bind('url'),
-      date: wy.libWidget({ type: 'relative-date' }, 'openedAt'),
+      url: wy.bind('name'),
+      date: wy.libWidget({ type: 'relative-date' }, 'createdAt'),
+      statvis: wy.widget({ type: 'barvis' }, 'statlog'),
     },
-    innerWindows: wy.vertList({ type: 'summary' }, 'innerWindowsView'),
+    compartments: wy.vertList({ type: 'summary' }, 'compartmentsView'),
   },
 });
 
