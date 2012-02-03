@@ -2,7 +2,7 @@
 <html>
   <head>
     <meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
-    <base href="resource://aboutnosy/" />
+    <base href="resource://jid1-o23hsujp6n0lva/about-nosy/data/" />
     <title>about:nosy</title>
     <style type="text/css">
       html {
@@ -16,22 +16,20 @@
 <script type="text/javascript" src="lib/require.js"></script>
   <script>
     require({
-      baseUrl: "resource://aboutnosy/",
+      baseUrl: "resource://jid1-o23hsujp6n0lva/about-nosy/data/",
       paths: {
         "text": "lib/text",
       },
       packages: [
         { name: "aboutnosy", location: "lib/aboutnosy" },
 
-        { name: "wmsy", location: "deps/lib/wmsy" },
+        { name: "wmsy", location: "deps/wmsy" },
       ],
-      ready: function() {
-        require(["aboutnosy/ui/app"],
-          function(mainModule) {
-            mainModule.main(document);
-        });
-      },
-    });
+      // make the text plugin always use XHR because it gets confused by
+      //  the protocol/origin change or what not.
+      text: { useXhr: function () { return true; } }
+    },
+    ["aboutnosy/ui/app"]);
   </script>
   </head>
 <body id="body" style="border: 0; padding: 0; margin: 0;">

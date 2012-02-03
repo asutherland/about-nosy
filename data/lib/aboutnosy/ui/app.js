@@ -21,20 +21,59 @@ define(
   ) {
 
 var wy = exports.wy =
-  new $wmsy.WmsyDomain({id: "app", domain: "app", css: $_css});
+  new $wmsy.WmsyDomain({id: "app", domain: "nosy", css: $_css});
+
+wy.defineWidget({
+  name: "root",
+  focus: wy.focus.domain.vertical(),
+  constraint: {
+    type: "root",
+  },
+  structure: {
+  },
+});
 
 function NosyApp() {
+  this.sampleCount = 30;
+  this.sampleIntervalMS = 1000;
 
-
+  this.frobConsumer = new $memfrobrep.MemFrobConsumer(
+                        this.sampleCount, this.sampleIntervalMS);
+  this._sendReq = null;
 }
 NosyApp.prototype = {
+  _receive: function(msg) {
+    if (msg.type === 'frobbed') {
+      this.frobConsumer.consumeExplicitWireRep(msg.data);
+    }
+  },
+
+  connect: function() {
+    this._sendReq({ type: 'setInterval', intervalMS: this.sampleIntervalMS });
+  },
 };
 
-function hookupChromeBridge() {
+function hookupChromeBridge(app) {
+  app._sendReq = function(data) {
+    var event = document.createEvent("MessageEvent");
+    event.initMessageEvent('uiReq', false, false,
+                           JSON.stringify(data), '*', null, null, null);
+    window.dispatchEvent(event);
+  };
+
+  window.addEventListener('uiData', function(evt) {
+    app._receive(JSON.parse(evt.data));
+  }, false);
 }
 
 exports.main = function(doc) {
+console.log("- main starting");
   var app = new NosyApp();
+console.log("- app created");
+  hookupChromeBridge(app);
+console.log("- app bound to bridge");
+  app.connect();
+console.log("- app requested initial data");
 
   var rootObj = {
   };
@@ -43,5 +82,6 @@ exports.main = function(doc) {
   var binder = wy.wrapElement(doc.getElementById("body"));
   binder.bind({type: "root", obj: rootObj});
 };
+exports.main(document);
 
 }); // end define
