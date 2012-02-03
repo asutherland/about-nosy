@@ -7,6 +7,9 @@
  *  representation.  Read the file comments for `memfrob.js` to understand the
  *  data we are provided with, its limitations, and the expected changes in the
  *  near future.
+ *
+ * Note: This file pretends like the term "URI" does not exist and only uses
+ *  "URL" because it's really confusing otherwise.
  **/
 
 define(
@@ -24,12 +27,14 @@ var NullViewListener = {
   didSeek: function() {},
 };
 
+////////////////////////////////////////////////////////////////////////////////
+// Summary Objects
+
 /**
  * A tab's memory usage is the sum of all its inner windows' costs.
  */
-function TabSummary(openedAt, statlog, topId) {
-  /** What URL is the tab currently displaying? */
-  this.url = '';
+function TabSummary(id, openedAt, statlog, topId) {
+  this.id = id;
   this.openedAt = openedAt;
 
   this._topId = topId;
@@ -51,8 +56,9 @@ TabSummary.prototype = {
  *  are an approximation derived from the total layout cost for a URL divided
  *  by its number of instances.
  */
-function InnerWindowSummary(uri) {
-  this.uri = uri;
+function InnerWindowSummary(id, url, statlog) {
+  this.id = id;
+  this.url = url;
   this.origin = null;
 }
 InnerWindowSummary.prototype = {
@@ -63,8 +69,8 @@ InnerWindowSummary.prototype = {
  * Aggregate resource usage for a given origin: its JS compartment, all DOM,
  *  all layout.
  */
-function OriginSummary(originUri, createdAt) {
-  this.uri = originUri;
+function OriginSummary(originUrl, createdAt) {
+  this.url = originUrl;
   this.createdAt = createdAt;
 
   this.relatedThings = [];
@@ -93,29 +99,91 @@ CompartmentSummary.prototype = {
   kind: 'compartment',
 };
 
-function Statlog() {
+////////////////////////////////////////////////////////////////////////////////
+// Time Series Management
+//
+// Eventually we can do something clever with typed arrays' ArrayBuffer and
+//  ArrayBufferView classes, but for now we just use arrays because it's
+//  harder to screw up.
+
+function Statlog(statId, stats) {
+  this.statId = statId;
+  this.stats = stats;
+  this.forwardTo = null;
 }
 Statlog.prototype = {
 };
 
-function AggrStatlog() {
+function AggrStatlog(summaryStats) {
+  this.stats = summaryStats;
 }
 AggrStatlog.prototype = {
+  aggregate: function(statlog) {
+    statlog.forwardTo = this.stats;
+  },
 };
 
 /**
- *
+ * Hands out `Statlog` instances and processes time series streams, including
+ *  value normalization.
  */
-function StatMaster() {
+function StatMaster(numPoints) {
+  this.numPoints = numPoints;
+  this._empty = new Array(numPoints);
+  for (var i = 0; i < numPoints; i++) {
+    this._empty[i] = 0;
+  }
+
+  // Yes, this would want to get 'mo clever too.  Of course, if we force
+  //  upstream to get 'mo clever and maintain a compact stat range, we don't
+  //  need to be clever...
+  this.statIdsToStatlogs = {};
+  this.aggrs = [];
 }
 StatMaster.prototype = {
   makeStatlog: function(statId) {
+    var stats = this._empty.concat(),
+        statlog = new Statlog(statId, stats);
+    this.statIdsToStatlogs[statId] = statlog;
+    return statlog;
   },
 
   makeAggrStatlog: function() {
+    var stats = this._empty.concat();
+    return new AggrStatlog(stats);
   },
+
+  /**
+   * Process the statistics data stream of the form [id1, val1, id2, val2, ...].
+   *  We shift in a zero for all the aggregations before we process the stream.
+   *  As we process the stream, we shift in the new values for all the normal
+   *  loggers.  Those loggers can reference a single aggregation to also
+   *  contribute to, in which case we boost the value (which we know started at
+   *  zero.)
+   */
+  processStatisticsStream: function(data) {
+    // - introduce a new zero in all aggregations
+    var i, aggrs = this.aggrs;
+    for (i = 0; i < aggrs.length; i++) {
+      aggrs.stats.pop();
+      aggrs.stats.unshift(0);
+    }
+
+    // - process the stream
+    const dlen = data.length, idsToLogs = this.statIdsToStatlogs;
+    for (i = 0; i < dlen;) {
+      var statId = data[i++], val = data[i++],
+          statlog = idsToLogs[statId];
+      statlog.pop();
+      statlog.push(val);
+      if (statlog.forwardTo)
+        statlog.forwardTo[0] += val;
+    }
+  }
 };
 
+////////////////////////////////////////////////////////////////////////////////
+// Rep Building
 
 function MemFrobConsumer() {
   this.statMaster = new StatMaster();
@@ -123,7 +191,7 @@ function MemFrobConsumer() {
   this.tabs = [];
   this.tabsByOuterWindowId = {};
   this.origins = [];
-  this.originsByUri = {};
+  this.originsByUrl = {};
   this.extensions = [];
   this.subsystems = [];
 
@@ -138,14 +206,14 @@ function MemFrobConsumer() {
 }
 exports.MemFrobConsumer = MemFrobConsumer;
 MemFrobConsumer.prototype = {
-  _trackOrigin: function(originUri, timestamp, thing) {
+  _trackOrigin: function(originUrl, timestamp, thing) {
     var origin;
-    if (this.originsByUri.hasOwnProperty(originUri)) {
-      origin = this.originsByUri[originUri];
+    if (this.originsByUrl.hasOwnProperty(originUrl)) {
+      origin = this.originsByUrl[originUrl];
     }
     else {
-      origin = new OriginSummary(originUri);
-      this.originsByUri[originUri] = origin;
+      origin = new OriginSummary(originUrl);
+      this.originsByUrl[originUrl] = origin;
       this.originsView.add(origin);
     }
     origin.relatedThingsView.add(thing);
@@ -158,7 +226,7 @@ MemFrobConsumer.prototype = {
     thing.origin = null;
     origin.relatedThingsView.remove(thing);
     if (origin.relatedThings.length === 0) {
-      delete this.originsByUri[origin.uri];
+      delete this.originsByUrl[origin.url];
       this.originsView.remove(origin);
     }
   },
@@ -172,40 +240,46 @@ MemFrobConsumer.prototype = {
    * - Origins: We blame origins for their DOM usage.
    */
   _consumeWindowsBlock: function(windows, timestamp) {
-    var i, outerId, statlogger, tab;
+console.log("- outer");
+    var i, outerId, statlogger, tab, uiUpdate = this._issueUiUpdate;
     for (i = 0; i < windows.addedOuter.length; i++) {
       // this got immediately serialized to keep the inner windows out
       var outerData = JSON.parse(windows.addedOuter[i]);
 
-      tab = new TabSummary(timestamp, this.statMaster.makeAggrStatlog(),
+      tab = new TabSummary(outerData.id,
+                           timestamp,
+                           this.statMaster.makeAggrStatlog(),
                            outerData.topId);
       this.tabsByOuterWindowId[outerData.id] = tab;
       this.tabsView.add(tab);
     }
-
+console.log("- inner");
     for (i = 0; i < windows.addedInner.length; i += 2) {
       outerId = windows.addedInner[i];
       var innerData = windows.addedInner[i+1];
 
       tab = this.tabsByOuterWindowId[outerId];
       var innerSummary = new InnerWindowSummary(
-                           innerData.uri,
+                           innerData.id,
+                           innerData.url,
                            this.statMaster.makeStatlog(innerData.statId));
       tab.innerWindowsView.add(innerSummary);
-      tab.statlog.aggregate(innerSummary.statlog);
+      //tab.statlog.aggregate(innerSummary.statlog);
 
-      // (this will only occur during the initial outer window add case)
-      if (tab._topId === innerData.id)
+      // (this will only occur durlng the initial outer window add case)
+      if (tab._topId === innerData.id) {
         tab.topWindow = innerSummary;
+        uiUpdate("tab", tab);
+      }
     }
-
+console.log("- modified");
     for (i = 0; i < windows.modifiedOuter.length; i++) {
       var outerDelta = windows.modifiedOuter[i];
 
       // - update topWindow, including generating an update
       tab = this.tabsByOuterWindowId[outerDelta.id];
       tab._topId = outerDelta.topId;
-      // TODO generate update notification
+      uiUpdate("tab", tab);
     }
 
     var self = this;
@@ -260,9 +334,11 @@ MemFrobConsumer.prototype = {
     this._consumeShellsBlock(wireRep.shells);
     this._consumeCompartmentsBlock(wireRep.compartments);
 
-    this._consumeStatistics(wireRep.statistics);
+    this.statMaster.processStatisticsStream(wireRep.statistics);
   },
 
 };
+
+////////////////////////////////////////////////////////////////////////////////
 
 }); // end define

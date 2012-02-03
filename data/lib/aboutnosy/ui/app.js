@@ -10,12 +10,14 @@ define(
   [
     'wmsy/wmsy',
     'aboutnosy/memfrobrep',
+    './summaries',
     'text!./app.css',
     'exports'
   ],
   function(
     $wmsy,
     $memfrobrep,
+    $ui_summaries,
     $_css,
     exports
   ) {
@@ -25,11 +27,27 @@ var wy = exports.wy =
 
 wy.defineWidget({
   name: "root",
-  focus: wy.focus.domain.vertical(),
+  focus: wy.focus.domain.vertical('tabs', 'origins', 'extensions',
+                                  'subsystems'),
   constraint: {
     type: "root",
   },
   structure: {
+    tabsLabel: "Tabs",
+    tabs: wy.vertList({ type: 'summary' },
+                      ['frobConsumer', 'tabsView']),
+
+    originsLabel: "Origins",
+    origins: wy.vertList({ type: 'summary' },
+                         ['frobConsumer', 'originsView']),
+
+    extensionsLabel: "Extensions",
+    extensions: wy.vertList({ type: 'summary' },
+                            ['frobConsumer', 'extensionsView']),
+
+    subsystemsLabel: "Subsystems",
+    subsystems: wy.vertList({ type: 'summary' },
+                            ['frobConsumer', 'subsystemsView']),
   },
 });
 
@@ -39,17 +57,32 @@ function NosyApp() {
 
   this.frobConsumer = new $memfrobrep.MemFrobConsumer(
                         this.sampleCount, this.sampleIntervalMS);
+// XXX DEBUG HACK!
+window.frobber = this.frobConsumer;
   this._sendReq = null;
 }
 NosyApp.prototype = {
   _receive: function(msg) {
+// XXX DEBUG HACK!
+window.FROBBED = msg.data;
     if (msg.type === 'frobbed') {
-      this.frobConsumer.consumeExplicitWireRep(msg.data);
+      try {
+        this.frobConsumer.consumeExplicitWireRep(msg.data);
+      }
+      catch(ex) {
+        // (If we don't do this, then our screw-ups disappear into the ether.
+        // The platform has come so far, and yet still has so far to go.)
+        console.error("Exception in processing:", ex);
+      }
     }
   },
 
   connect: function() {
     this._sendReq({ type: 'setInterval', intervalMS: this.sampleIntervalMS });
+  },
+
+  attachToUI: function(updateHelper) {
+    this.frobConsumer._issueUiUpdate = updateHelper;
   },
 };
 
@@ -67,20 +100,18 @@ function hookupChromeBridge(app) {
 }
 
 exports.main = function(doc) {
-console.log("- main starting");
   var app = new NosyApp();
-console.log("- app created");
   hookupChromeBridge(app);
-console.log("- app bound to bridge");
-  app.connect();
-console.log("- app requested initial data");
-
-  var rootObj = {
-  };
 
   // bind the UI into existence.
   var binder = wy.wrapElement(doc.getElementById("body"));
-  binder.bind({type: "root", obj: rootObj});
+  binder.bind({type: "root", obj: app});
+
+  var idSpace = binder.idSpace;
+  app.attachToUI(//idSpace.updateUsingObject.bind(idSpace));
+    function(space, obj) { console.log("updating", space, obj); idSpace.updateUsingObject(space, obj); });
+
+  app.connect();
 };
 exports.main(document);
 

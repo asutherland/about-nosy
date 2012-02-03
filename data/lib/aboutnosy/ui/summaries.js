@@ -23,15 +23,18 @@ define(
 var wy = exports.wy =
   new $wmsy.WmsyDomain({id: 'summaries', domain: 'nosy', css: $_css});
 
+wy.defineIdSpace("tab", function(tab) { return tab.id; });
+
 wy.defineWidget({
   name: 'tab-summary',
   constraint: {
     type: 'summary',
     obj: { kind: 'tab' },
   },
+  idspaces: ["tab"],
   structure: {
     header: {
-      url: wy.bind('url'),
+      url: wy.bind(['topWindow', 'url']),
       date: wy.libWidget({ type: 'relative-date' }, 'openedAt'),
     },
     innerWindows: wy.vertList({ type: 'summary' }, 'innerWindowsView'),
@@ -47,9 +50,8 @@ wy.defineWidget({
   structure: {
     header: {
       url: wy.bind('url'),
-      date: wy.libWidget({ type: 'relative-date' }, 'openedAt'),
+      date: wy.libWidget({ type: 'relative-date' }, 'createdAt'),
     },
-    innerWindows: wy.vertList({ type: 'summary' }, 'innerWindowsView'),
   },
 });
 
@@ -87,7 +89,7 @@ wy.defineWidget({
   name: 'subsystem-summary',
   constraint: {
     type: 'summary',
-    obj: { kind: 'tab' },
+    obj: { kind: 'subsystem' },
   },
   structure: {
     header: {

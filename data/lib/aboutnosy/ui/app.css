@@ -1,3 +1,22 @@
 
+.prettyBar {
+  display: block;
+
+  border-radius: 5px;
+  background-color: #eee;
+  padding: 4px;
+  margin: 6px;
+
+  color: #222;
+  font-size: large;
+  font-weight: bold;
+}
+
 #root {
+  #tabsLabel, #originsLabel, #extensionsLabel, #subsystemsLabel {
+    .prettyBar;
+  }
+  #tabs, #origins, #extensions, #subsystems {
+    margin-left: 2em;
+  }
 }

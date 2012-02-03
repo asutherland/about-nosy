@@ -7,5 +7,5 @@ self.port.on('uiData', function(msg) {
 });
 
 window.addEventListener('uiReq', function (event) {
-  self.postMessage(JSON.parse(event.data));
+  self.port.emit('uiReq', JSON.parse(event.data));
 }, false);
