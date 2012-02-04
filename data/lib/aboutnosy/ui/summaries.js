@@ -25,102 +25,75 @@ define(
 var wy = exports.wy =
   new $wmsy.WmsyDomain({id: 'summaries', domain: 'nosy', css: $_css});
 
-wy.defineIdSpace("tab", function(tab) { return tab.id; });
+wy.defineIdSpace("summary", function(summary) { return summary.id; });
 
 wy.defineWidget({
-  name: 'tab-summary',
+  name: 'summary-capsule',
   constraint: {
-    type: 'summary',
-    obj: { kind: 'tab' },
+    type: 'summary-capsule',
   },
-  idspaces: ["tab"],
+  idspaces: ["summary"],
   structure: {
-    header: {
-      url: wy.bind(['topWindow', 'url']),
-      date: wy.libWidget({ type: 'relative-date' }, 'createdAt'),
-      statvis: wy.widget({ type: 'barvis' }, 'statlog'),
+    headerRow: {
+      lefty: {
+        brand: wy.bind('brand'),
+        twisty: {},
+      },
+      labelBox: {
+        name: wy.bind('name'),
+        date: wy.libWidget({ type: 'relative-date' }, 'createdAt'),
+      },
+      stats: wy.horizList({ type: 'statvis' }, 'stats'),
     },
-    innerWindows: wy.vertList({ type: 'summary' }, 'innerWindowsView'),
+    kids: wy.vertList({ type: 'summary-line' }, wy.NONE),
+  },
+  impl: {
+    postInitUpdate: function() {
+      this.collapsed = true;
+      this.domNode.setAttribute("collapsed", this.collapsed);
+      if (!this.collapsed) {
+        this.kids_set(this.obj.kidsView);
+      }
+    },
+    toggleCollapsed: function() {
+      this.collapsed = !this.collapsed;
+      if (this.collapsed) {
+        this.kids_set(null);
+      }
+      else {
+        this.kids_set(this.obj.kidsView);
+      }
+      this.domNode.setAttribute("collapsed", this.collapsed);
+    },
+  },
+  events: {
+    root: {
+      enter_key: function() {
+        this.toggleCollapsed();
+      },
+    },
+    headerRow: {
+      click: function() {
+        this.toggleCollapsed();
+      }
+    },
   },
 });
 
 wy.defineWidget({
-  name: 'inner-window-summary',
+  name: 'summary-line',
   constraint: {
-    type: 'summary',
-    obj: { kind: 'inner-window' },
+    type: 'summary-line',
   },
   structure: {
     header: {
-      url: wy.bind('url'),
+      name: wy.bind('url'),
       date: wy.libWidget({ type: 'relative-date' }, 'createdAt'),
-      statvis: wy.widget({ type: 'barvis' }, 'statlog'),
+      statvis: wy.widget({ type: 'statvis' }, 'statlog'),
     },
   },
 });
 
-wy.defineWidget({
-  name: 'compartment-summary',
-  constraint: {
-    type: 'summary',
-    obj: { kind: 'compartment' },
-  },
-  structure: {
-    header: {
-      displayName: wy.bind('displayName'),
-      date: wy.libWidget({ type: 'relative-date' }, 'createdAt'),
-      statvis: wy.widget({ type: 'barvis' }, 'statlog'),
-    },
-  },
-});
-
-wy.defineWidget({
-  name: 'origin-summary',
-  constraint: {
-    type: 'summary',
-    obj: { kind: 'origin' },
-  },
-  structure: {
-    header: {
-      url: wy.bind('url'),
-      date: wy.libWidget({ type: 'relative-date' }, 'createdAt'),
-      statvis: wy.widget({ type: 'barvis' }, 'statlog'),
-    },
-    compartments: wy.vertList({ type: 'summary' }, 'compartmentsView'),
-  },
-});
-
-wy.defineWidget({
-  name: 'extension-summary',
-  constraint: {
-    type: 'summary',
-    obj: { kind: 'extension' },
-  },
-  structure: {
-    header: {
-      name: wy.bind('name'),
-      date: wy.libWidget({ type: 'relative-date' }, 'createdAt'),
-      statvis: wy.widget({ type: 'barvis' }, 'statlog'),
-    },
-    compartments: wy.vertList({ type: 'summary' }, 'compartmentsView'),
-  },
-});
-
-wy.defineWidget({
-  name: 'subsystem-summary',
-  constraint: {
-    type: 'summary',
-    obj: { kind: 'subsystem' },
-  },
-  structure: {
-    header: {
-      url: wy.bind('name'),
-      date: wy.libWidget({ type: 'relative-date' }, 'createdAt'),
-      statvis: wy.widget({ type: 'barvis' }, 'statlog'),
-    },
-    compartments: wy.vertList({ type: 'summary' }, 'compartmentsView'),
-  },
-});
 
 
 }); // end define

@@ -43,11 +43,14 @@ function TabSummary(id, createdAt, statlog, topId) {
   this.innerWindows = [];
   this.innerWindowsView = new $vs_array.ArrayViewSlice(this.innerWindows,
                                                        NullViewListener);
+  this.kidsView = this.innerWindowsView;
 
   this.statlog = statlog;
+  this.stats = [statlog];
 }
 TabSummary.prototype = {
   kind: 'tab',
+  brand: 'tab',
 
   getInnerWindowById: function(id) {
     for (var i = 0; i < this.innerWindows.length; i++) {
@@ -56,6 +59,12 @@ TabSummary.prototype = {
     }
 
     return null;
+  },
+
+  get name() {
+    if (this.topWindow)
+      return this.topWindow.url;
+    return '???';
   },
 };
 
@@ -70,9 +79,11 @@ function InnerWindowSummary(id, url, statlog) {
   this.url = url;
   this.origin = null;
   this.statlog = statlog;
+  this.stats = [statlog];
 }
 InnerWindowSummary.prototype = {
   kind: 'inner-window',
+  brand: 'win',
 };
 
 var AggregatingSummary = {
@@ -91,9 +102,10 @@ var AggregatingSummary = {
  *  all layout.
  */
 function OriginSummary(originUrl, createdAt, statlog) {
-  this.url = originUrl;
+  this.url = this.name = originUrl;
   this.createdAt = createdAt;
   this.statlog = statlog;
+  this.stats = [statlog];
 
   this.relatedThings = [];
   this.relatedThingsView = new $vs_array.ArrayViewSlice(this.relatedThings,
@@ -102,10 +114,12 @@ function OriginSummary(originUrl, createdAt, statlog) {
   this.compartments = [];
   this.compartmentsView = new $vs_array.ArrayViewSlice(this.compartments,
                                                        NullViewListener);
+  this.kidsView = this.compartmentsView;
 }
 OriginSummary.prototype = {
   __proto__: AggregatingSummary,
   kind: 'origin',
+  brand: 'O',
   sentinel: false,
 
   trackUser: function() {
@@ -114,43 +128,52 @@ OriginSummary.prototype = {
   },
 };
 
-function ExtensionSummary(id, name, description, statlog) {
+function ExtensionSummary(id, name, description, createdAt, statlog) {
   this.id = id;
   this.name = name;
   this.description = description;
+  this.createdAt = createdAt;
   this.statlog = statlog;
+  this.stats = [statlog];
 
   this.compartments = [];
   this.compartmentsView = new $vs_array.ArrayViewSlice(this.compartments,
                                                        NullViewListener);
+  this.kidsView = this.compartmentsView;
 }
 ExtensionSummary.prototype = {
   __proto__: AggregatingSummary,
   kind: 'extension',
+  brand: 'ext',
   sentinel: false,
 };
 
-function SubsystemSummary(name, statlog) {
+function SubsystemSummary(name, createdAt, statlog) {
   this.name = name;
   this.statlog = statlog;
+  this.stats = [statlog];
+  this.createdAt = createdAt;
 
   this.compartments = [];
   this.compartmentsView = new $vs_array.ArrayViewSlice(this.compartments,
                                                        NullViewListener);
+  this.kidsView = this.compartmentsView;
 }
 SubsystemSummary.prototype = {
   __proto__: AggregatingSummary,
   kind: 'subsystem',
+  brand: 'sys',
   sentinel: false,
 };
 
 function CompartmentSummary(type, url, addrStr, createdAt, statlog) {
   this.type = type;
-  this.url = url;
+  this.url = this.name = url;
   this.addrStr = addrStr;
 
   this.createdAt = createdAt;
   this.statlog = statlog;
+  this.stats = [statlog];
 
   this.displayName = url || addrStr || type;
 
@@ -158,6 +181,7 @@ function CompartmentSummary(type, url, addrStr, createdAt, statlog) {
 }
 CompartmentSummary.prototype = {
   kind: 'compartment',
+  brand: 'JS',
   sentinel: false,
 
   die: function() {
@@ -328,7 +352,7 @@ function MemFrobConsumer() {
   this.extensionsById = {};
   this.extensionsByOriginUrl = {};
 
-  this._appCatchAll = new SubsystemSummary("Other",
+  this._appCatchAll = new SubsystemSummary("Catch-all", new Date(),
                                            this.statKing.makeAggrStatlog());
   this._appCatchAll.sentinel = true;
   this.subsystems = [this._appCatchAll];
@@ -387,7 +411,7 @@ MemFrobConsumer.prototype = {
       // (this will only occur durlng the initial outer window add case)
       if (tab._topId === innerData.id) {
         tab.topWindow = innerSummary;
-        uiUpdate("tab", tab);
+        uiUpdate("summary", tab);
       }
     }
 
@@ -399,7 +423,7 @@ MemFrobConsumer.prototype = {
       tab = this.tabsByOuterWindowId[outerDelta.id];
       tab._topId = outerDelta.topId;
       tab.topWindow = tab.getInnerWindowById(tab._topId);
-      uiUpdate("tab", tab);
+      uiUpdate("summary", tab);
     }
 
     var self = this;
@@ -468,6 +492,7 @@ MemFrobConsumer.prototype = {
             if (!this.extensionsById.hasOwnProperty(extInfo.id)) {
               originThing = new ExtensionSummary(
                               extInfo.id, extInfo.name, extInfo.description,
+                              timestamp,
                               this.statKing.makeAggrStatlog());
               this.extensionsById[extInfo.id] = originThing;
               this.extensionsView.add(originThing);

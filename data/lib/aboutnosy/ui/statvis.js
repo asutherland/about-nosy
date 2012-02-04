@@ -30,7 +30,7 @@ const oneMeg = 1024 * 1024;
 wy.defineWidget({
   name: 'barvis',
   constraint: {
-    type: 'barvis',
+    type: 'statvis',
   },
   structure: {
   },
@@ -39,7 +39,7 @@ wy.defineWidget({
     postInit: function() {
       this._labelWidth = 28;
       this._width = 4 * this.obj.statKing.numPoints + this._labelWidth;
-      this._height = 24;
+      this._height = 28;
       this._x = null;
       this._y = null;
       this._makeVis();

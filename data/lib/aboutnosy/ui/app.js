@@ -34,19 +34,19 @@ wy.defineWidget({
   },
   structure: {
     tabsLabel: "Tabs",
-    tabs: wy.vertList({ type: 'summary' },
+    tabs: wy.vertList({ type: 'summary-capsule' },
                       ['frobConsumer', 'tabsView']),
 
     originsLabel: "Origins",
-    origins: wy.vertList({ type: 'summary' },
+    origins: wy.vertList({ type: 'summary-capsule' },
                          ['frobConsumer', 'originsView']),
 
     extensionsLabel: "Extensions",
-    extensions: wy.vertList({ type: 'summary' },
+    extensions: wy.vertList({ type: 'summary-capsule' },
                             ['frobConsumer', 'extensionsView']),
 
     subsystemsLabel: "Subsystems",
-    subsystems: wy.vertList({ type: 'summary' },
+    subsystems: wy.vertList({ type: 'summary-capsule' },
                             ['frobConsumer', 'subsystemsView']),
   },
 });
