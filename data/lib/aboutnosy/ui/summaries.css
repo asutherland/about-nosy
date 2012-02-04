@@ -1,21 +1,22 @@
 
-.url {
-  color: #08c;
+.ellipsis {
   text-overflow: ellipsis;
   overflow: hidden; 
   white-space: nowrap;
+}
+
+.url {
+  color: #08c;
+  .ellipsis;
 }
 .bigUrl {
   font-size: 150%;
   color: #08c;
-  text-overflow: ellipsis;
-  overflow: hidden; 
-  white-space: nowrap;
+  .ellipsis;
 }
 .date {
   color: #888;
   font-size: 80%;
-  width: 80px;
   display: inline-block;
 }
 
@@ -105,20 +106,21 @@
   #stats-item {
     display: inline-block;
   }
-
-  #kids {
-    margin-left: 20px;
-  }
 }
+
+.summaryLineBrand {
+  display: inline-block;
+  font-size: 10px; 
+  text-align: center;
+  color: #aaa;
+  width: 30px;
+  text-align: center;
+  vertical-align: 50%;
+}
+
 #summary-line {
   #brand {
-    display: inline-block;
-    font-size: 10px; 
-    text-align: center;
-    color: #aaa;
-    width: 30px;
-    text-align: center;
-    vertical-align: 50%;
+    .summaryLineBrand;
   }
 
   #labelBox {
@@ -135,5 +137,48 @@
   }
   #statvis {
     display: inline-block;
+  }
+}
+
+#context-summary-line {
+  #brand {
+    .summaryLineBrand;
+  }
+
+  #labelBox {
+    display: inline-block;
+    width: 480px;
+  }
+  #name {
+    .url;
+    display: block;
+  }
+  #context {
+    color: #888;
+    font-size: 80%;
+    display: block;
+    .ellipsis;
+  }
+  #statvis {
+    display: inline-block;
+  }
+}
+
+
+#summary-body-generic {
+  #kids {
+    margin-left: 20px;
+  }
+}
+
+#summary-body-origin {
+  #compartments, #users {
+    margin-left: 20px;
+  }
+
+  #usersLabel {
+    display: inline-block;
+    margin: 5px;
+    margin-left: 15px;
   }
 }

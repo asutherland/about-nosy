@@ -74,9 +74,10 @@ TabSummary.prototype = {
  *  are an approximation derived from the total layout cost for a URL divided
  *  by its number of instances.
  */
-function InnerWindowSummary(id, url, createdAt, statlog) {
+function InnerWindowSummary(id, url, tab, createdAt, statlog) {
   this.id = id;
   this.url = this.name = url;
+  this.tab = tab;
   this.origin = null;
 
   this.createdAt = createdAt;
@@ -87,6 +88,19 @@ function InnerWindowSummary(id, url, createdAt, statlog) {
 InnerWindowSummary.prototype = {
   kind: 'inner-window',
   brand: 'win',
+
+  die: function() {
+    this.statlog.die();
+    if (this.origin)
+      this.origin.forgetUser(this);
+  },
+
+  get contextName() {
+    if (this.tab)
+      return this.tab.name;
+    else
+      return '(missing context)';
+  },
 };
 
 var AggregatingSummary = {
@@ -129,9 +143,13 @@ OriginSummary.prototype = {
   brand: 'O',
   sentinel: false,
 
-  trackUser: function() {
+  trackUser: function(thing) {
+    thing.origin = this;
+    this.relatedThingsView.add(thing);
   },
-  forgetUser: function() {
+  forgetUser: function(thing) {
+    thing.origin = null;
+    this.relatedThingsView.remove(thing);
   },
 };
 
@@ -293,6 +311,10 @@ StatKing.prototype = {
     for (i = 0; i < dlen;) {
       var statId = data[i++], val = data[i++],
           statlog = idsToLogs[statId];
+      // XXX ignore missing stats for now, but this should really be a
+      //  self-diagnostic criterion.
+      if (!statlog)
+        continue;
       statlog.stats.pop();
       statlog.stats.unshift(val);
 
@@ -357,7 +379,6 @@ function MemFrobConsumer() {
 
   this.extensions = [];
   this.extensionsById = {};
-  this.extensionsByOriginUrl = {};
 
   this._appCatchAll = new SubsystemSummary("Catch-all", new Date(),
                                            this.statKing.makeAggrStatlog());
@@ -417,10 +438,17 @@ MemFrobConsumer.prototype = {
       innerSummary = new InnerWindowSummary(
                        innerData.id,
                        innerData.url,
+                       tab,
                        timestamp,
                        this.statKing.makeStatlog(innerData.statId));
       tab.innerWindowsView.add(innerSummary);
       tab.statlog.aggregate(innerSummary.statlog);
+
+      if (innerData.origin &&
+          this.originsByUrl.hasOwnProperty(innerData.origin)) {
+        var origin = this.originsByUrl[innerData.origin];
+        origin.trackUser(innerSummary);
+      }
 
       // (this will only occur durlng the initial outer window add case)
       if (tab._topId === innerData.id) {
@@ -442,7 +470,7 @@ MemFrobConsumer.prototype = {
 
     var self = this;
     function killInner(innerSummary) {
-      innerSummary.statlog.die();
+      innerSummary.die();
     }
 
     for (i = 0; i < windows.removedOuter.length; i++) {
@@ -515,19 +543,6 @@ MemFrobConsumer.prototype = {
               originThing = this.extensionsById[extInfo.id];
             }
           }
-          // we can bin it and blame an extension or subsystem with a url
-          else if (compData.urlOrigin) {
-            if (!this.extensionsByOriginUrl.hasOwnProperty(compData.urlOrigin)){
-              originThing = new ExtensionSummary(
-                              null, compData.urlOrigin, "",
-                              this.statKing.makeAggrStatlog());
-              this.extensionsByOriginUrl[compData.urlOrigin] = originThing;
-              this.extensionsView.add(originThing);
-            }
-            else {
-              originThing = this.extensionsByOriginUrl[compData.urlOrigin];
-            }
-          }
           else {
             originThing = this._appCatchAll;
           }
@@ -554,6 +569,7 @@ MemFrobConsumer.prototype = {
             originThing = new OriginSummary(
                             useName, timestamp,
                             this.statKing.makeAggrStatlog());
+            this.originsByUrl[compData.url] = originThing;
             this.originsView.add(originThing);
           }
           else {
@@ -578,6 +594,14 @@ MemFrobConsumer.prototype = {
 
       if (owner.isEmpty) {
         this._viewsByKind[owner.kind].remove(owner);
+        switch (owner.kind) {
+          case 'extension':
+            delete this.extensionsById[owner.id];
+            break;
+          case 'origin':
+            delete this.originsByUrl[owner.url];
+            break;
+        }
       }
     }
   },
@@ -585,9 +609,17 @@ MemFrobConsumer.prototype = {
   consumeExplicitWireRep: function(wireRep) {
     var timestamp = new Date(wireRep.timestamp);
 
-    this._consumeWindowsBlock(wireRep.windows, timestamp);
-    this._consumeShellsBlock(wireRep.shells);
+    // - compartments (=> origins, extensions, subsystems)
+    // Create these prior to windows so we can relate inner windows to their
+    //  origins.
     this._consumeCompartmentsBlock(wireRep.compartments, timestamp);
+
+    // - windows (=> tabs, inner windows)
+    this._consumeWindowsBlock(wireRep.windows, timestamp);
+
+    // - shells
+    // this is going to get merged in to windows soon...
+    this._consumeShellsBlock(wireRep.shells);
 
     this.statKing.processStatisticsStream(wireRep.statistics);
     this._issueBlanketUiUpdate('statvis');
