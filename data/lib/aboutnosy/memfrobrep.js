@@ -114,8 +114,10 @@ OriginSummary.prototype = {
   },
 };
 
-function ExtensionSummary(name, statlog) {
+function ExtensionSummary(id, name, description, statlog) {
+  this.id = id;
   this.name = name;
+  this.description = description;
   this.statlog = statlog;
 
   this.compartments = [];
@@ -157,6 +159,11 @@ function CompartmentSummary(type, url, addrStr, createdAt, statlog) {
 CompartmentSummary.prototype = {
   kind: 'compartment',
   sentinel: false,
+
+  die: function() {
+    this.owner.forgetCompartment(this);
+    this.statlog.die();
+  }
 };
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -318,6 +325,7 @@ function MemFrobConsumer() {
   this._compartmentsByStatId = {};
 
   this.extensions = [];
+  this.extensionsById = {};
   this.extensionsByOriginUrl = {};
 
   this._appCatchAll = new SubsystemSummary("Other",
@@ -338,31 +346,6 @@ function MemFrobConsumer() {
 }
 exports.MemFrobConsumer = MemFrobConsumer;
 MemFrobConsumer.prototype = {
-  _trackOrigin: function(originUrl, timestamp, thing) {
-    var origin;
-    if (this._originToThing.hasOwnProperty(originUrl)) {
-      origin = this.originsByUrl[originUrl];
-    }
-    else {
-      origin = new OriginSummary(originUrl);
-      this.originsByUrl[originUrl] = origin;
-      this.originsView.add(origin);
-    }
-    origin.relatedThingsView.add(thing);
-    thing.origin = origin;
-    return origin;
-  },
-
-  _forgetOrigin: function(thing) {
-    var origin = thing.origin;
-    thing.origin = null;
-    origin.relatedThingsView.remove(thing);
-    if (origin.relatedThings.length === 0) {
-      delete this.originsByUrl[origin.url];
-      this.originsView.remove(origin);
-    }
-  },
-
   /**
    * Consume window info, which is currently just DOM info.  This tells us
    *  about:
@@ -422,7 +405,6 @@ MemFrobConsumer.prototype = {
     var self = this;
     function killInner(innerSummary) {
       innerSummary.statlog.die();
-      //self._forgetOrigin(innerSummary);
     }
 
     for (i = 0; i < windows.removedOuter.length; i++) {
@@ -481,11 +463,25 @@ MemFrobConsumer.prototype = {
       switch (compData.type) {
         // - system: extension or subsystem
         case 'sys':
+          if (compData.extensionInfo) {
+            var extInfo = compData.extensionInfo;
+            if (!this.extensionsById.hasOwnProperty(extInfo.id)) {
+              originThing = new ExtensionSummary(
+                              extInfo.id, extInfo.name, extInfo.description,
+                              this.statKing.makeAggrStatlog());
+              this.extensionsById[extInfo.id] = originThing;
+              this.extensionsView.add(originThing);
+            }
+            else {
+              originThing = this.extensionsById[extInfo.id];
+            }
+          }
           // we can bin it and blame an extension or subsystem with a url
-          if (compData.urlOrigin) {
+          else if (compData.urlOrigin) {
             if (!this.extensionsByOriginUrl.hasOwnProperty(compData.urlOrigin)){
-              originThing = new ExtensionSummary(compData.urlOrigin,
-                                                 this.statKing.makeAggrStatlog());
+              originThing = new ExtensionSummary(
+                              null, compData.urlOrigin, "",
+                              this.statKing.makeAggrStatlog());
               this.extensionsByOriginUrl[compData.urlOrigin] = originThing;
               this.extensionsView.add(originThing);
             }
@@ -534,14 +530,7 @@ MemFrobConsumer.prototype = {
     // - removed
     for (i = 0; i < comps.removed.length; i++) {
       cmpt = this._compartmentsByStatId[comps.removed[i]];
-      cmpt.owner.forgetCompartment(cmpt);
-    }
-  },
-
-  _consumeStatistics: function(stats) {
-    for (var i = 0; i < stats.length; i += 2) {
-      var statId = stats[i], value = stats[i+1];
-
+      cmpt.die();
     }
   },
 
