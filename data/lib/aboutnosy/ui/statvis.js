@@ -25,6 +25,8 @@ var wy = exports.wy =
 
 wy.defineIdSpace('statvis', function(tab) { return tab.id; });
 
+const oneMeg = 1024 * 1024;
+
 wy.defineWidget({
   name: 'barvis',
   constraint: {
@@ -35,12 +37,15 @@ wy.defineWidget({
   idspaces: ['statvis'],
   impl: {
     postInit: function() {
-      this._labelWidth = 24;
+      this._labelWidth = 28;
       this._width = 4 * this.obj.statKing.numPoints + this._labelWidth;
       this._height = 24;
       this._x = null;
       this._y = null;
       this._makeVis();
+    },
+    _megTextFunc: function(d) {
+      return Math.floor(d / oneMeg) + "M";
     },
     _makeVis: function() {
       var statlog = this.obj, stats = statlog.stats;
@@ -60,7 +65,10 @@ wy.defineWidget({
       this.yFunc = function(d) { return h - y(d); };
 
       var rectClass = this.__cssClassBaseName + "rect",
-          labelClass = this.__cssClassBaseName + "label";
+          maxLabelClass = this.__cssClassBaseName + "maxLabel",
+          curLabelClass = this.__cssClassBaseName + "curLabel",
+          selectMaxLabel = this.selectMaxLabel = "." + maxLabelClass,
+          selectCurLabel = this.selectCurLabel = "." + curLabelClass;
 
       vis.selectAll("rect")
           .data(stats)
@@ -73,15 +81,25 @@ wy.defineWidget({
 
       // label!
       this.identityFunc = function(d) { return d; };
-      vis.selectAll("text")
+      vis.selectAll(selectMaxLabel)
           .data([statlog.statKing.chartMaxStr])
         .enter().append("text")
-          .attr("class", labelClass)
+          .attr("class", maxLabelClass)
           .attr("x", lw - 2)
           .attr("y", 0)
           .attr("dy", 10)
           .attr("text-anchor", "end")
           .text(this.identityFunc);
+
+      this.megTextFunc =
+      vis.selectAll(selectCurLabel)
+          .data([stats[0]])
+        .enter().append("text")
+          .attr("class", curLabelClass)
+          .attr("x", lw - 2)
+          .attr("y", h)
+          .attr("text-anchor", "end")
+          .text(this._megTextFunc);
     },
     _updateVis: function() {
       var statlog = this.obj, y = this._y;
@@ -93,9 +111,12 @@ wy.defineWidget({
         .attr("y", this.yFunc)
         .attr("height", y);
 
-      this.vis.selectAll("text")
+      this.vis.selectAll(this.selectMaxLabel)
         .data([statlog.statKing.chartMaxStr])
         .text(this.identityFunc);
+      this.vis.selectAll(this.selectCurLabel)
+        .data([statlog.stats[0]])
+        .text(this._megTextFunc);
     },
     update: function(recursive) {
       this._updateVis();
