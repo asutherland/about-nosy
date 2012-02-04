@@ -3,16 +3,14 @@
   color: #08c;
   text-overflow: ellipsis;
   overflow: hidden; 
-  white-space:nowrap;
-  width: 570px;
-  display: inline-block;
+  white-space: nowrap;
 }
 .bigUrl {
   font-size: 150%;
   color: #08c;
   text-overflow: ellipsis;
   overflow: hidden; 
-  white-space:nowrap;
+  white-space: nowrap;
 }
 .date {
   color: #888;
@@ -109,14 +107,33 @@
   }
 
   #kids {
-    margin-left: 30px;
+    margin-left: 20px;
   }
 }
 #summary-line {
+  #brand {
+    display: inline-block;
+    font-size: 10px; 
+    text-align: center;
+    color: #aaa;
+    width: 30px;
+    text-align: center;
+    vertical-align: 50%;
+  }
+
+  #labelBox {
+    display: inline-block;
+    width: 480px;
+  }
   #name {
     .url;
+    display: block;
   }
   #date {
     .date;
+    display: block;
+  }
+  #statvis {
+    display: inline-block;
   }
 }

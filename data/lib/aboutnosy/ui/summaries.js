@@ -86,11 +86,12 @@ wy.defineWidget({
     type: 'summary-line',
   },
   structure: {
-    header: {
-      name: wy.bind('url'),
+    brand: wy.bind('brand'),
+    labelBox: {
+      name: wy.bind('name'),
       date: wy.libWidget({ type: 'relative-date' }, 'createdAt'),
-      statvis: wy.widget({ type: 'statvis' }, 'statlog'),
     },
+    statvis: wy.horizList({ type: 'statvis' }, 'stats'),
   },
 });
 

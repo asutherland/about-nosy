@@ -74,10 +74,13 @@ TabSummary.prototype = {
  *  are an approximation derived from the total layout cost for a URL divided
  *  by its number of instances.
  */
-function InnerWindowSummary(id, url, statlog) {
+function InnerWindowSummary(id, url, createdAt, statlog) {
   this.id = id;
-  this.url = url;
+  this.url = this.name = url;
   this.origin = null;
+
+  this.createdAt = createdAt;
+
   this.statlog = statlog;
   this.stats = [statlog];
 }
@@ -414,6 +417,7 @@ MemFrobConsumer.prototype = {
       innerSummary = new InnerWindowSummary(
                        innerData.id,
                        innerData.url,
+                       timestamp,
                        this.statKing.makeStatlog(innerData.statId));
       tab.innerWindowsView.add(innerSummary);
       tab.statlog.aggregate(innerSummary.statlog);
