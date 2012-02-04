@@ -95,6 +95,10 @@ var AggregatingSummary = {
   forgetCompartment: function(cmpt) {
     this.compartmentsView.remove(cmpt);
   },
+
+  get isEmpty() {
+    return this.compartments.length === 0;
+  },
 };
 
 /**
@@ -364,6 +368,12 @@ function MemFrobConsumer() {
                                                      NullViewListener);
   this.subsystemsView = new $vs_array.ArrayViewSlice(this.subsystems,
                                                      NullViewListener);
+  this._viewsByKind = {
+    'tab': this.tabsView,
+    'origin': this.originsView,
+    'extension': this.extensionsView,
+    'subsystem': this.subsystemsView,
+  };
 
   this._issueUiUpdate = null;
   this._issueBlanketUiUpdate = null;
@@ -559,7 +569,12 @@ MemFrobConsumer.prototype = {
     // - removed
     for (i = 0; i < comps.removed.length; i++) {
       cmpt = this._compartmentsByStatId[comps.removed[i]];
+      var owner = cmpt.owner;
       cmpt.die();
+
+      if (owner.isEmpty) {
+        this._viewsByKind[owner.kind].remove(owner);
+      }
     }
   },
 
