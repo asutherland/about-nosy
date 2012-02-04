@@ -508,8 +508,12 @@ MemFrobConsumer.prototype = {
         // - web: an actual content (shared) origin
         case 'web':
           if (!this.originsByUrl.hasOwnProperty(compData.url)) {
+            var useName = compData.url;
+            if (compData.extensionInfo) {
+              useName = "extension content: " + compData.extensionInfo.name;
+            }
             originThing = new OriginSummary(
-                            compData.url, timestamp,
+                            useName, timestamp,
                             this.statKing.makeAggrStatlog());
             this.originsView.add(originThing);
           }
