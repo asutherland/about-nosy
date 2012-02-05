@@ -26,6 +26,8 @@ var wy = exports.wy =
   new $wmsy.WmsyDomain({id: 'summaries', domain: 'nosy', css: $_css});
 
 wy.defineIdSpace("summary", function(summary) { return summary.id; });
+// A summary widget dependent on its owning tab for display purposes.
+wy.defineIdSpace("deptab", function(summary) { return summary.tab.id; });
 
 wy.defineWidget({
   name: 'summary-capsule',
@@ -142,6 +144,9 @@ wy.defineWidget({
   constraint: {
     type: 'context-summary-line',
   },
+  // because our display is dependent on our tab, we need to update when our
+  //  tab updates.
+  idspaces: ["deptab"],
   structure: {
     brand: wy.bind('brand'),
     labelBox: {

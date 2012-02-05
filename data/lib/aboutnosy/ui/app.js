@@ -73,6 +73,7 @@ window.FROBBED = msg.data;
     if (msg.type === 'frobbed') {
       try {
         this.frobConsumer.consumeExplicitWireRep(msg.data);
+        this._uiFocusUpdate();
       }
       catch(ex) {
         // (If we don't do this, then our screw-ups disappear into the ether.
@@ -86,8 +87,11 @@ window.FROBBED = msg.data;
     this._sendReq({ type: 'setInterval', intervalMS: this.sampleIntervalMS });
   },
 
-  attachToUI: function(updateHelper, blanketUpdateHelper) {
+  attachToUI: function(focusHelper, updateHelper, updateIdHelper,
+                       blanketUpdateHelper) {
+    this._uiFocusUpdate = focusHelper;
     this.frobConsumer._issueUiUpdate = updateHelper;
+    this.frobConsumer._issueUiUpdateById = updateIdHelper;
     this.frobConsumer._issueBlanketUiUpdate = blanketUpdateHelper;
   },
 };
@@ -117,11 +121,13 @@ exports.main = function(doc) {
 
   // bind the UI into existence.
   var binder = wy.wrapElement(doc.getElementById("body"));
-  binder.bind({type: "root", obj: app});
+  var binding = binder.bind({type: "root", obj: app});
 
   var idSpace = binder.idSpace;
   app.attachToUI(
+    binding.FOCUS.updateFocusRing.bind(binding.FOCUS),
     idSpace.updateUsingObject.bind(idSpace),
+    idSpace.updateUsingId.bind(idSpace),
     idSpace.updateAllObjectsInSpace.bind(idSpace)
   );
 

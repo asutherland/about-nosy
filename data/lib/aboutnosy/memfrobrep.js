@@ -467,7 +467,8 @@ MemFrobConsumer.prototype = {
    */
   _consumeWindowsBlock: function(windows, timestamp) {
     var i, outerId, innerId, statlogger, tab, innerSummary,
-        uiUpdate = this._issueUiUpdate;
+        uiUpdate = this._issueUiUpdate,
+        uiUpdateById = this._issueUiUpdateById;
 
     // - outer
     for (i = 0; i < windows.addedOuter.length; i++) {
@@ -511,6 +512,7 @@ MemFrobConsumer.prototype = {
         // (the ui gets updated as a side-effect of the re-recreation)
         this.tabsView.remove(tab);
         this.tabsView.add(tab);
+        uiUpdateById('deptab', tab.id);
       }
     }
 
@@ -524,6 +526,9 @@ MemFrobConsumer.prototype = {
       tab.topWindow = tab.getInnerWindowById(tab._topId);
       this.tabsView.remove(tab);
       this.tabsView.add(tab);
+      // dependent windows may need to update (although they will likely
+      //  become unrooted and experience GC death in the future).
+      uiUpdateById('deptab', tab.id);
     }
 
     var self = this;
