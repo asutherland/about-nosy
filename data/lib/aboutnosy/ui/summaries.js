@@ -36,7 +36,7 @@ wy.defineWidget({
     type: 'summary-capsule',
   },
   focus: wy.focus.item,
-  idspaces: ["summary"],
+  idspaces: ['summary'],
   structure: {
     headerRow: {
       lefty: {
@@ -129,6 +129,7 @@ wy.defineWidget({
   constraint: {
     type: 'summary-line',
   },
+  idspaces: ['summary'],
   structure: {
     brand: wy.bind('brand'),
     labelBox: {
@@ -146,7 +147,7 @@ wy.defineWidget({
   },
   // because our display is dependent on our tab, we need to update when our
   //  tab updates.
-  idspaces: ["deptab"],
+  idspaces: ['summary', 'deptab'],
   structure: {
     brand: wy.bind('brand'),
     labelBox: {

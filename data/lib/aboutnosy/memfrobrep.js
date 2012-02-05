@@ -143,6 +143,10 @@ InnerWindowSummary.prototype = {
   kind: 'inner-window',
   brand: 'win',
 
+  changeUrl: function(newUrl) {
+    this.url = this.name = newUrl;
+  },
+
   die: function() {
     this.statlog.die();
     if (this.origin)
@@ -529,6 +533,24 @@ MemFrobConsumer.prototype = {
       // dependent windows may need to update (although they will likely
       //  become unrooted and experience GC death in the future).
       uiUpdateById('deptab', tab.id);
+    }
+
+    for (i = 0; i < windows.modifiedInner.length; i++) {
+      var innerDelta = windows.modifiedInner[i];
+
+      tab = this.tabsByOuterWindowId[innerDelta.outerId];
+      innerSummary = tab.getInnerWindowById(innerDelta.id);
+      innerSummary.changeUrl(innerDelta.url);
+      // the rename may affect the ordering...
+      tab.innerWindowsView.remove(innerSummary);
+      tab.innerWindowsView.add(innerSummary);
+      uiUpdate('summary', innerSummary);
+      // if we are the defining inner window, we need to update the tab
+      if (tab.topWindow === innerSummary) {
+        this.tabsView.remove(tab);
+        this.tabsView.add(tab);
+        uiUpdateById('deptab', tab.id);
+      }
     }
 
     var self = this;
