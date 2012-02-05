@@ -247,7 +247,8 @@ SubsystemSummary.prototype = {
 
 function CompartmentSummary(type, url, addrStr, createdAt, statlog) {
   this.type = type;
-  this.url = this.name = url;
+  this.name = url || (addrStr ? (type + ' ' + addrStr) : type);
+  this.url = url;
   this.addrStr = addrStr;
 
   this.createdAt = createdAt;
