@@ -11,6 +11,7 @@ define(
     'wmsy/wmsy',
     'aboutnosy/memfrobrep',
     './summaries',
+    './help',
     'text!./app.css',
     'exports'
   ],
@@ -18,6 +19,7 @@ define(
     $wmsy,
     $memfrobrep,
     $ui_summaries,
+    $ui_help,
     $_css,
     exports
   ) {
@@ -27,12 +29,15 @@ var wy = exports.wy =
 
 wy.defineWidget({
   name: "root",
-  focus: wy.focus.domain.vertical('tabs', 'origins', 'extensions',
+  focus: wy.focus.domain.vertical('about',
+                                  'tabs', 'origins', 'extensions',
                                   'subsystems'),
   constraint: {
     type: "root",
   },
   structure: {
+    about: wy.widget({ type: 'about' }, wy.SELF),
+
     tabsLabel: "Tabs",
     tabs: wy.vertList({ type: 'summary-capsule' },
                       ['frobConsumer', 'tabsView']),

@@ -1,0 +1,33 @@
+You are looking at distilled summaries from the Firefox memory reporter
+infrastructure.  We take the same data you can see in about:memory and
+sample it once a second.  This generates a tremendous amount of garbage;
+we may easily be the most interesting thing happening in the display.
+
+We currently only look at:
+- DOM + style data as found under the explicit/dom+style/ tree.
+- JS compartment data as found under the explicit/js/ tree.
+
+We notably do not look at:
+- layout shells.  We actually retrieve this data, but fail to correlate it
+   back because it's ambiguous and annoying and an upcoming bugfix will
+   lump the data into the dom+style tree for us.
+
+We summarize this information into:
+- tabs: dom+style data gets broken down into tabs.
+- extensions: We map JS compartments back to their file resources and 
+   from there back to the extensions that provide those resources.
+- origins: All content JS for a given origin (protocol + domain + port)
+   lives in a single compartment.  We tell you about that compartment
+   and the web pages that (probably) use that compartment for their JS
+   logic.
+- subsystems: Right now we only have a single subsystem, "catch-all",
+   and it's where all the JS compartments go that can't be attributed
+   to extensions.
+
+All charts are of memory usage.  All units are mebibytes but are
+labeled "M" for simplicity.  All graphs are scaled to the same scale
+and the highest value on the scale is labeled in black at the top.
+The current value for a chart is presented in light blue and rounded
+down to the nearest mebibyte.
+
+Up/down arrow keys move focus, enter collapses/uncollapses stuff.

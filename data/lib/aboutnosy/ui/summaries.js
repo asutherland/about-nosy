@@ -3,7 +3,7 @@
  * You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 /**
- *
+ * UI widgets to display tab/origin/extension/subsystem/etc. summaries.
  **/
 
 define(
@@ -33,6 +33,7 @@ wy.defineWidget({
   constraint: {
     type: 'summary-capsule',
   },
+  focus: wy.focus.item,
   idspaces: ["summary"],
   structure: {
     headerRow: {
@@ -77,6 +78,7 @@ wy.defineWidget({
         this.body_set(this.obj);
       }
       this.domNode.setAttribute("collapsed", this.collapsed);
+      this.FOCUS.bindingResized(this);
     },
   },
   events: {
@@ -149,7 +151,6 @@ wy.defineWidget({
     statvis: wy.horizList({ type: 'statvis' }, 'stats'),
   },
 });
-
 
 
 }); // end define

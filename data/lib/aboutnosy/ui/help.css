@@ -1,0 +1,25 @@
+#about {
+  #root{
+    display: inline-block;
+    margin: 6px;
+    margin-bottom: 1em;
+
+    [collapsed="true"] {
+      #expandyText {
+        display: none;
+      }
+    }
+  }
+
+  #label {
+    cursor: pointer;
+    text-decoration: underline;
+  }
+
+  #expandyText {
+    display: block;
+    font-family: monospace;
+    white-space: pre;
+    margin: 1em;
+  }
+}
