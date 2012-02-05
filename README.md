@@ -1,4 +1,8 @@
-Current milestone: zilch
+Current milestone: M1
+
+I may skip M2 and M3 for now because:
+- the GC probes were recently dumbed down; not sure of the fallout
+- GC visualization is different from CPU usage which can just reuse the bars
 
 # Game plan
 
