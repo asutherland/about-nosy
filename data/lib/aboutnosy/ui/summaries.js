@@ -117,9 +117,9 @@ wy.defineWidget({
     obj: { kind: 'origin' },
   },
   structure: {
-    compartments: wy.vertList({ type: 'summary-line' }, 'compartments'),
+    compartments: wy.vertList({ type: 'summary-line' }, 'compartmentsView'),
     usersLabel: "Used by:",
-    users: wy.vertList({ type: 'context-summary-line' }, 'relatedThings'),
+    users: wy.vertList({ type: 'context-summary-line' }, 'relatedThingsView'),
   }
 });
 
