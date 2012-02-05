@@ -27,6 +27,57 @@ var NullViewListener = {
   didSeek: function() {},
 };
 
+const PROTO_TO_SORT_SENTINEL = {
+  // lump internal stuff and extensions up high.
+  'about': 'A',
+  'chrome': 'A',
+  'resource': 'A',
+  'extension content': 'B',
+
+  'http': 'J',
+  'https': 'J',
+  'ftp': 'K',
+  'ws': 'L',
+  'wss': 'L',
+}, DEFAULT_SORT_SENTINEL = 'Z';
+function makeUrlSortKey(url) {
+  if (!url)
+    return DEFAULT_SORT_SENTINEL;
+  // figure the 'protocol' out, use it to create our prefix
+  var idx = url.indexOf(':'),
+      proto = url.substring(0, idx++),
+      sortKey;
+  if (PROTO_TO_SORT_SENTINEL.hasOwnProperty(proto))
+    sortKey = PROTO_TO_SORT_SENTINEL[proto];
+  else
+    sortKey = DEFAULT_SORT_SENTINEL;
+
+  // skip front-slashes
+  while (url[idx] === '/') {
+    idx++;
+  }
+  var idxFrontSlash = url.indexOf('/', idx);
+  if (idxFrontSlash === -1)
+    idxFrontSlash = url.length;
+  var domain = url.substring(idx, idxFrontSlash);
+  // we should now just be left with a domain name which we want to reverse
+  //  java package style.  'www.blah.com' => 'com.blah.www'.
+  var bits = domain.split('.');
+  bits.reverse();
+  return sortKey + bits.join('.');
+}
+
+function makeUrlSortyViewSlice(listObj, sortAttr) {
+  return new $vs_array.ArrayViewSlice(
+    listObj, NullViewListener, null,
+    function keyFetcher(obj) {
+      return makeUrlSortKey(obj[sortAttr]);
+    },
+    function keyComparator(a, b) {
+      return a.localeCompare(b);
+    });
+}
+
 ////////////////////////////////////////////////////////////////////////////////
 // Summary Objects
 
@@ -41,12 +92,13 @@ function TabSummary(id, createdAt, statlog, topId) {
   this.topWindow = null;
 
   this.innerWindows = [];
-  this.innerWindowsView = new $vs_array.ArrayViewSlice(this.innerWindows,
-                                                       NullViewListener);
+  this.innerWindowsView = makeUrlSortyViewSlice(this.innerWindows, 'url');
   this.kidsView = this.innerWindowsView;
 
   this.statlog = statlog;
   this.stats = [statlog];
+
+  this.collapsed = true;
 }
 TabSummary.prototype = {
   kind: 'tab',
@@ -84,6 +136,8 @@ function InnerWindowSummary(id, url, tab, createdAt, statlog) {
 
   this.statlog = statlog;
   this.stats = [statlog];
+
+  this.collapsed = true;
 }
 InnerWindowSummary.prototype = {
   kind: 'inner-window',
@@ -129,13 +183,13 @@ function OriginSummary(originUrl, createdAt, statlog) {
   this.stats = [statlog];
 
   this.relatedThings = [];
-  this.relatedThingsView = new $vs_array.ArrayViewSlice(this.relatedThings,
-                                                        NullViewListener);
+  this.relatedThingsView = makeUrlSortyViewSlice(this.relatedThings, 'name');
 
   this.compartments = [];
-  this.compartmentsView = new $vs_array.ArrayViewSlice(this.compartments,
-                                                       NullViewListener);
+  this.compartmentsView = makeUrlSortyViewSlice(this.compartments, 'name');
+
   this.kidsView = this.compartmentsView;
+  this.collapsed = true;
 }
 OriginSummary.prototype = {
   __proto__: AggregatingSummary,
@@ -162,9 +216,9 @@ function ExtensionSummary(id, name, description, createdAt, statlog) {
   this.stats = [statlog];
 
   this.compartments = [];
-  this.compartmentsView = new $vs_array.ArrayViewSlice(this.compartments,
-                                                       NullViewListener);
+  this.compartmentsView = makeUrlSortyViewSlice(this.compartments, 'name');
   this.kidsView = this.compartmentsView;
+  this.collapsed = true;
 }
 ExtensionSummary.prototype = {
   __proto__: AggregatingSummary,
@@ -180,9 +234,9 @@ function SubsystemSummary(name, createdAt, statlog) {
   this.createdAt = createdAt;
 
   this.compartments = [];
-  this.compartmentsView = new $vs_array.ArrayViewSlice(this.compartments,
-                                                       NullViewListener);
+  this.compartmentsView = makeUrlSortyViewSlice(this.compartments, 'name');
   this.kidsView = this.compartmentsView;
+  this.collapsed = true;
 }
 SubsystemSummary.prototype = {
   __proto__: AggregatingSummary,
@@ -203,6 +257,7 @@ function CompartmentSummary(type, url, addrStr, createdAt, statlog) {
   this.displayName = url || addrStr || type;
 
   this.owner = null;
+  this.collapsed = true;
 }
 CompartmentSummary.prototype = {
   kind: 'compartment',
@@ -385,13 +440,10 @@ function MemFrobConsumer() {
   this._appCatchAll.sentinel = true;
   this.subsystems = [this._appCatchAll];
 
-  this.tabsView = new $vs_array.ArrayViewSlice(this.tabs, NullViewListener);
-  this.originsView = new $vs_array.ArrayViewSlice(this.origins,
-                                                  NullViewListener);
-  this.extensionsView = new $vs_array.ArrayViewSlice(this.extensions,
-                                                     NullViewListener);
-  this.subsystemsView = new $vs_array.ArrayViewSlice(this.subsystems,
-                                                     NullViewListener);
+  this.tabsView = makeUrlSortyViewSlice(this.tabs, 'name');
+  this.originsView = makeUrlSortyViewSlice(this.origins, 'name');
+  this.extensionsView =  makeUrlSortyViewSlice(this.extensions, 'name');
+  this.subsystemsView = makeUrlSortyViewSlice(this.subsystems, 'name');
   this._viewsByKind = {
     'tab': this.tabsView,
     'origin': this.originsView,
@@ -453,7 +505,11 @@ MemFrobConsumer.prototype = {
       // (this will only occur durlng the initial outer window add case)
       if (tab._topId === innerData.id) {
         tab.topWindow = innerSummary;
-        uiUpdate("summary", tab);
+        // this will affect our sort order...
+        // unfortunately it will also destroy and re-create the widget
+        // (the ui gets updated as a side-effect of the re-recreation)
+        this.tabsView.remove(tab);
+        this.tabsView.add(tab);
       }
     }
 
@@ -465,7 +521,8 @@ MemFrobConsumer.prototype = {
       tab = this.tabsByOuterWindowId[outerDelta.id];
       tab._topId = outerDelta.topId;
       tab.topWindow = tab.getInnerWindowById(tab._topId);
-      uiUpdate("summary", tab);
+      this.tabsView.remove(tab);
+      this.tabsView.add(tab);
     }
 
     var self = this;
@@ -474,7 +531,7 @@ MemFrobConsumer.prototype = {
     }
 
     for (i = 0; i < windows.removedOuter.length; i++) {
-      console.log("outer removal", windows.removedOuter[i]);
+      //console.log("outer removal", windows.removedOuter[i]);
       tab = this.tabsByOuterWindowId[windows.removedOuter[i]];
       this.tabsView.remove(tab);
       tab.statlog.die();
@@ -486,7 +543,7 @@ MemFrobConsumer.prototype = {
     for (i = 0; i < windows.removedInner.length; i += 2) {
       outerId = windows.removedInner[i];
       innerId = windows.removedInner[i+1];
-      console.log("inner removal", outerId, innerId);
+      //console.log("inner removal", outerId, innerId);
 
       tab = this.tabsByOuterWindowId[outerId];
       innerSummary = tab.getInnerWindowById(innerId);

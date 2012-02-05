@@ -50,15 +50,14 @@ wy.defineWidget({
   },
   impl: {
     postInitUpdate: function() {
-      this.collapsed = true;
-      this.domNode.setAttribute("collapsed", this.collapsed);
-      if (!this.collapsed) {
+      this.domNode.setAttribute("collapsed", this.obj.collapsed);
+      if (!this.obj.collapsed) {
         this.body_set(this.obj);
       }
     },
     toggleCollapsed: function() {
-      this.collapsed = !this.collapsed;
-      if (this.collapsed) {
+      this.obj.collapsed = !this.obj.collapsed;
+      if (this.obj.collapsed) {
         // nuke the binding out of existence
         var bodyElem = this.body_element;
         bodyElem.binding.destroy(false, false);
