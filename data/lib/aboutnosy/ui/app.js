@@ -38,19 +38,19 @@ wy.defineWidget({
   structure: {
     about: wy.widget({ type: 'about' }, wy.SELF),
 
-    tabsLabel: "Tabs",
+    tabsLabel: "Tabs (DOM + Style + apportioned Layout)",
     tabs: wy.vertList({ type: 'summary-capsule' },
                       ['frobConsumer', 'tabsView']),
 
-    originsLabel: "Origins",
+    originsLabel: "Origins (JS + DOM+Style+Layout)",
     origins: wy.vertList({ type: 'summary-capsule' },
                          ['frobConsumer', 'originsView']),
 
-    extensionsLabel: "Extensions",
+    extensionsLabel: "Extensions (JS)",
     extensions: wy.vertList({ type: 'summary-capsule' },
                             ['frobConsumer', 'extensionsView']),
 
-    subsystemsLabel: "Subsystems",
+    subsystemsLabel: "Subsystems (JS)",
     subsystems: wy.vertList({ type: 'summary-capsule' },
                             ['frobConsumer', 'subsystemsView']),
   },

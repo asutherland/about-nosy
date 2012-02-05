@@ -4,22 +4,28 @@ sample it once a second.  This generates a tremendous amount of garbage;
 we may easily be the most interesting thing happening in the display.
 
 We currently only look at:
-- DOM + style data as found under the explicit/dom+style/ tree.
+- DOM + style data as found under the explicit/dom+style/ tree.  We
+   ignore basically dead windows with less memory usage than 1k
+   because they screw up our layout shell correlation because they lack
+   shells and so don't apportion usage correctly.
 - JS compartment data as found under the explicit/js/ tree.
-
-We notably do not look at:
-- layout shells.  We actually retrieve this data, but fail to correlate it
-   back because it's ambiguous and annoying and an upcoming bugfix will
-   lump the data into the dom+style tree for us.
+- layout shells.  We retrieve the data and attempt to map it to the
+   appropriate DOM+style inner window.  Unfortunately, we can only
+   apportion layout use equally amongst all inner windows with the
+   same URL until bug 713799 is fixed.
 
 We summarize this information into:
-- tabs: dom+style data gets broken down into tabs.
+- tabs: dom+style data gets broken down into tabs and their inner
+   windows.  Inner window memory usage is from both dom+style and
+   layout (equally apportioned).  We do not include JS usage because
+   I fear it would be too misleading if we distribute it equally.
 - extensions: We map JS compartments back to their file resources and 
    from there back to the extensions that provide those resources.
 - origins: All content JS for a given origin (protocol + domain + port)
    lives in a single compartment.  We tell you about that compartment
    and the web pages that (probably) use that compartment for their JS
-   logic.
+   logic.  We tally the JS and the pages for the origin to try and
+   provide aggregate memory usage for the domain/origin.
 - subsystems: Right now we only have a single subsystem, "catch-all",
    and it's where all the JS compartments go that can't be attributed
    to extensions.

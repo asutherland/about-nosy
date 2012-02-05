@@ -126,7 +126,7 @@ TabSummary.prototype = {
  *  are an approximation derived from the total layout cost for a URL divided
  *  by its number of instances.
  */
-function InnerWindowSummary(id, url, tab, createdAt, statlog) {
+function InnerWindowSummary(id, url, tab, createdAt, aggrStatlog, statlog) {
   this.id = id;
   this.url = this.name = url;
   this.tab = tab;
@@ -134,8 +134,10 @@ function InnerWindowSummary(id, url, tab, createdAt, statlog) {
 
   this.createdAt = createdAt;
 
-  this.statlog = statlog;
-  this.stats = [statlog];
+  aggrStatlog.aggregate(statlog);
+  this.statlog = aggrStatlog;
+  this.domStatlog = statlog;
+  this.stats = [aggrStatlog];
 
   this.collapsed = true;
 }
@@ -148,9 +150,10 @@ InnerWindowSummary.prototype = {
   },
 
   die: function() {
-    this.statlog.die();
     if (this.origin)
       this.origin.forgetUser(this);
+    this.statlog.die();
+    this.domStatlog.die();
   },
 
   get contextName() {
@@ -168,6 +171,7 @@ var AggregatingSummary = {
     cmpt.owner = this;
   },
   forgetCompartment: function(cmpt) {
+    this.statlog.unaggregate(cmpt.statlog);
     this.compartmentsView.remove(cmpt);
   },
 
@@ -203,9 +207,11 @@ OriginSummary.prototype = {
 
   trackUser: function(thing) {
     thing.origin = this;
+    this.statlog.aggregate(thing.statlog);
     this.relatedThingsView.add(thing);
   },
   forgetUser: function(thing) {
+    this.statlog.unaggregate(thing.statlog);
     thing.origin = null;
     this.relatedThingsView.remove(thing);
   },
@@ -290,20 +296,54 @@ function Statlog(statKing, statId, stats) {
 }
 Statlog.prototype = {
   die: function() {
+    // forget about us
     delete this.statKing.statIdsToStatlogs[this.statId];
+
+    // have people we are forwarding to forget about us
+    if (this.forwardTo) {
+      for (var i = 0; i < this.forwardTo.length; i++) {
+        var aggr = this.forwardTo[i],
+            idx = aggr.aggregates.indexOf(this);
+        if (idx !== -1)
+          aggr.aggregates.splice(idx, 1);
+      }
+    }
   },
 };
 
 function AggrStatlog(statKing, summaryStats) {
   this.statKing = statKing;
   this.stats = summaryStats;
+  this.forwardTo = null;
+  this.aggregates = [];
 }
 AggrStatlog.prototype = {
   aggregate: function(statlog) {
-    statlog.forwardTo = this.stats;
+    this.aggregates.push(statlog);
+    if (!statlog.forwardTo)
+      statlog.forwardTo = [];
+    statlog.forwardTo.push(this);
+  },
+
+  unaggregate: function(statlog) {
+    var idx = this.aggregates.indexOf(statlog);
+    if (idx !== -1)
+      this.aggregates.splice(idx, 1);
+    idx = statlog.forwardTo.indexOf(this);
+    if (idx !== -1)
+      statlog.forwardTo.splice(idx, 1);
   },
 
   die: function() {
+    // have the things we are aggregating from forget us
+    for (var i = 0; i < this.aggregates.length; i++) {
+      var statlog = this.aggregates[i],
+          idx = statlog.forwardTo.indexOf(this);
+      if (idx !== -1)
+        statlog.forwardTo.splice(idx, 1);
+    }
+
+    // have the king forget about us
     var index = this.statKing.aggrs.indexOf(this);
     if (index !== -1)
       this.statKing.aggrs.splice(index, 1);
@@ -366,11 +406,25 @@ StatKing.prototype = {
     }
 
     // - process the stream
-    var maxValThisCycle = 0;
+    var val, maxValThisCycle = 0;
+    function doForward(forwardTo) {
+      for (var iTarg = 0; iTarg < forwardTo.length; iTarg++) {
+        var fwdStatlog = forwardTo[iTarg], fwdStats = fwdStatlog.stats;
+
+        var summedVal = fwdStats[0] + val;
+        fwdStats[0] = summedVal;
+        if (summedVal > maxValThisCycle)
+          maxValThisCycle = summedVal;
+
+        if (fwdStatlog.forwardTo)
+          doForward(fwdStatlog.forwardTo);
+      }
+    }
+
     const dlen = data.length, idsToLogs = this.statIdsToStatlogs;
     for (i = 0; i < dlen;) {
-      var statId = data[i++], val = data[i++],
-          statlog = idsToLogs[statId];
+      var statId = data[i++], statlog = idsToLogs[statId];
+      val = data[i++];
       // XXX ignore missing stats for now, but this should really be a
       //  self-diagnostic criterion.
       if (!statlog)
@@ -379,10 +433,7 @@ StatKing.prototype = {
       statlog.stats.unshift(val);
 
       if (statlog.forwardTo) {
-        var summedVal = statlog.forwardTo[0] + val;
-        statlog.forwardTo[0] = summedVal;
-        if (summedVal > maxValThisCycle)
-          maxValThisCycle = summedVal;
+        doForward(statlog.forwardTo);
       }
       else if (val > maxValThisCycle) {
         maxValThisCycle = val;
@@ -440,6 +491,8 @@ function MemFrobConsumer() {
   this.extensions = [];
   this.extensionsById = {};
 
+  this.shellStatsByUrl = {};
+
   this._appCatchAll = new SubsystemSummary("Catch-all", new Date(),
                                            this.statKing.makeAggrStatlog());
   this._appCatchAll.sentinel = true;
@@ -471,6 +524,7 @@ MemFrobConsumer.prototype = {
    */
   _consumeWindowsBlock: function(windows, timestamp) {
     var i, outerId, innerId, statlogger, tab, innerSummary,
+        shellStatsByUrl = this.shellStatsByUrl,
         uiUpdate = this._issueUiUpdate,
         uiUpdateById = this._issueUiUpdateById;
 
@@ -498,9 +552,15 @@ MemFrobConsumer.prototype = {
                        innerData.url,
                        tab,
                        timestamp,
+                       this.statKing.makeAggrStatlog(),
                        this.statKing.makeStatlog(innerData.statId));
       tab.innerWindowsView.add(innerSummary);
       tab.statlog.aggregate(innerSummary.statlog);
+
+      // try and find a shell and aggregate its stats into our own
+      if (shellStatsByUrl.hasOwnProperty(innerData.url)) {
+        innerSummary.statlog.aggregate(shellStatsByUrl[innerData.url]);
+      }
 
       if (innerData.origin &&
           this.originsByUrl.hasOwnProperty(innerData.origin)) {
@@ -540,7 +600,16 @@ MemFrobConsumer.prototype = {
 
       tab = this.tabsByOuterWindowId[innerDelta.outerId];
       innerSummary = tab.getInnerWindowById(innerDelta.id);
+      // the rename will affect our shell stats. ugh.
+      if (shellStatsByUrl.hasOwnProperty(innerSummary.url)) {
+        innerSummary.statlog.unaggregate(shellStatsByUrl[innerSummary.url]);
+      }
       innerSummary.changeUrl(innerDelta.url);
+      // try and get stats from the new URL
+      if (shellStatsByUrl.hasOwnProperty(innerSummary.url)) {
+        innerSummary.statlog.aggregate(shellStatsByUrl[innerData.url]);
+      }
+
       // the rename may affect the ordering...
       tab.innerWindowsView.remove(innerSummary);
       tab.innerWindowsView.add(innerSummary);
@@ -575,6 +644,8 @@ MemFrobConsumer.prototype = {
 
       tab = this.tabsByOuterWindowId[outerId];
       innerSummary = tab.getInnerWindowById(innerId);
+      // we need to unaggregate the tab, but not the origin (forgetUser does
+      //  that when killInner calls innerSummary.die)
       killInner(innerSummary);
       tab.innerWindowsView.remove(innerSummary);
     }
@@ -586,17 +657,33 @@ MemFrobConsumer.prototype = {
    * - InnerWindows: We get to proportionately blame them for their layout
    *    usage.  (Proportionately because we only get a sum for a URL.)
    * - Origins: We get to blame them for all of the layout usage for a URL.
+   *
+   * We don't surface the shell info directly.  Instead, we just publish the
+   *  shells by their URL and have the inner windows find them and try and
+   *  aggregate their stats.
    */
   _consumeShellsBlock: function(shells) {
-    var i;
+    var i, shellStatsByUrl = this.shellStatsByUrl, shellInfo;
 
     for (i = 0; i < shells.added.length; i++) {
+      shellInfo = shells.added[i];
+
+      shellStatsByUrl[shellInfo.url] = this.statKing.makeStatlog(
+                                         shellInfo.statId);
     }
 
+    // we don't populate this on the other side anymore
+    /*
     for (i = 0; i < shells.modified.length; i++) {
     }
+    */
 
     for (i = 0; i < shells.removed.length; i++) {
+      shellInfo = shells.removed[i];
+
+      var statlog = shellStatsByUrl[shellInfo.url];
+      statlog.die();
+      delete shellStatsByUrl[shellInfo.url];
     }
   },
 
@@ -699,12 +786,15 @@ MemFrobConsumer.prototype = {
     //  origins.
     this._consumeCompartmentsBlock(wireRep.compartments, timestamp);
 
+    // - shells
+    // this is going to get merged in to windows soon...
+    // do this prior to windows so inner windows can find their shells for
+    //  stats gathering purposes.
+    this._consumeShellsBlock(wireRep.shells);
+
     // - windows (=> tabs, inner windows)
     this._consumeWindowsBlock(wireRep.windows, timestamp);
 
-    // - shells
-    // this is going to get merged in to windows soon...
-    this._consumeShellsBlock(wireRep.shells);
 
     this.statKing.processStatisticsStream(wireRep.statistics);
     this._issueBlanketUiUpdate('statvis');
