@@ -2,7 +2,7 @@
     "name": "about-nosy", 
     "license": "MPL 2.0/GPL 2.0/LGPL 2.1", 
     "author": "Andrew Sutherland <asutherland@asutherland.org>", 
-    "version": "0.2", 
+    "version": "0.3",
     "fullName": "about:nosy", 
     "id": "jid1-O23HSUjp6N0lVA", 
     "description": "Visualize what's going on in your Firefox"
