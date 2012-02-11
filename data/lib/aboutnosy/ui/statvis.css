@@ -16,8 +16,12 @@
     fill: #aaf;
   }
 
-  #rect {
+  #memrect {
     fill: #444;
+  }
+
+  #cpurect {
+    fill: #040;
   }
 }
 

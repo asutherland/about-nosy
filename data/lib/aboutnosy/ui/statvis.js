@@ -25,8 +25,6 @@ var wy = exports.wy =
 
 wy.defineIdSpace('statvis', function(tab) { return tab.id; });
 
-const oneMeg = 1024 * 1024;
-
 wy.defineWidget({
   name: 'barvis',
   constraint: {
@@ -64,7 +62,7 @@ wy.defineWidget({
 
       this.yFunc = function(d) { return h - y(d); };
 
-      var rectClass = this.__cssClassBaseName + "rect",
+      var rectClass = this.__cssClassBaseName + statlog.statKing.name + "rect",
           maxLabelClass = this.__cssClassBaseName + "maxLabel",
           curLabelClass = this.__cssClassBaseName + "curLabel",
           selectMaxLabel = this.selectMaxLabel = "." + maxLabelClass,
@@ -91,7 +89,13 @@ wy.defineWidget({
           .attr("text-anchor", "end")
           .text(this.identityFunc);
 
-      this.megTextFunc =
+      const unitLabel = statlog.statKing.unitLabel,
+            unitSize = statlog.statKing.unitSize;
+      // XXX this could be prototype parameterized using wmsy's support
+      //  for constraint parameters.
+      this.labelTextFunc = function(d) {
+        return Math.floor(d / unitSize) + unitLabel;
+      };
       vis.selectAll(selectCurLabel)
           .data([stats[0]])
         .enter().append("text")
@@ -99,7 +103,7 @@ wy.defineWidget({
           .attr("x", lw - 2)
           .attr("y", h)
           .attr("text-anchor", "end")
-          .text(this._megTextFunc);
+          .text(this.labelTextFunc);
     },
     _updateVis: function() {
       var statlog = this.obj, y = this._y;
@@ -116,7 +120,7 @@ wy.defineWidget({
         .text(this.identityFunc);
       this.vis.selectAll(this.selectCurLabel)
         .data([statlog.stats[0]])
-        .text(this._megTextFunc);
+        .text(this.labelTextFunc);
     },
     update: function(recursive) {
       this._updateVis();

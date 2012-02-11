@@ -168,10 +168,14 @@ var AggregatingSummary = {
   trackCompartment: function(cmpt) {
     this.compartmentsView.add(cmpt);
     this.statlog.aggregate(cmpt.statlog);
+    if (cmpt.cpuStatlog)
+      this.cpuStatlog.aggregate(cmpt.cpuStatlog);
     cmpt.owner = this;
   },
   forgetCompartment: function(cmpt) {
     this.statlog.unaggregate(cmpt.statlog);
+    if (cmpt.cpuStatlog)
+      this.cpuStatlog.unaggregate(cmpt.cpuStatlog);
     this.compartmentsView.remove(cmpt);
   },
 
@@ -184,11 +188,14 @@ var AggregatingSummary = {
  * Aggregate resource usage for a given origin: its JS compartment, all DOM,
  *  all layout.
  */
-function OriginSummary(originUrl, createdAt, statlog) {
+function OriginSummary(originUrl, createdAt, memStatlog, cpuStatlog) {
   this.url = this.name = originUrl;
   this.createdAt = createdAt;
-  this.statlog = statlog;
-  this.stats = [statlog];
+  this.statlog = memStatlog;
+  this.cpuStatlog = cpuStatlog;
+  this.stats = [memStatlog];
+  if (cpuStatlog)
+    this.stats.push(cpuStatlog);
 
   this.relatedThings = [];
   this.relatedThingsView = makeUrlSortyViewSlice(this.relatedThings, 'name');
@@ -217,13 +224,17 @@ OriginSummary.prototype = {
   },
 };
 
-function ExtensionSummary(id, name, description, createdAt, statlog) {
+function ExtensionSummary(id, name, description, createdAt, memStatlog,
+                          cpuStatlog) {
   this.id = id;
   this.name = name;
   this.description = description;
   this.createdAt = createdAt;
-  this.statlog = statlog;
-  this.stats = [statlog];
+  this.statlog = memStatlog;
+  this.cpuStatlog = cpuStatlog;
+  this.stats = [memStatlog];
+  if (cpuStatlog)
+    this.stats.push(cpuStatlog);
 
   this.compartments = [];
   this.compartmentsView = makeUrlSortyViewSlice(this.compartments, 'name');
@@ -240,6 +251,7 @@ ExtensionSummary.prototype = {
 function SubsystemSummary(name, createdAt, statlog) {
   this.name = name;
   this.statlog = statlog;
+  this.cpuStatlog = null;
   this.stats = [statlog];
   this.createdAt = createdAt;
 
@@ -263,6 +275,7 @@ function CompartmentSummary(type, url, addrStr, createdAt, statlog) {
 
   this.createdAt = createdAt;
   this.statlog = statlog;
+  this.cpuStatlog = null;
   this.stats = [statlog];
 
   this.displayName = url || addrStr || type;
@@ -278,6 +291,8 @@ CompartmentSummary.prototype = {
   die: function() {
     this.owner.forgetCompartment(this);
     this.statlog.die();
+    if (this.cpuStatlog)
+      this.cpuStatlog.die();
   }
 };
 
@@ -354,8 +369,12 @@ AggrStatlog.prototype = {
  * Hands out `Statlog` instances and processes time series streams, including
  *  value normalization.
  */
-function StatKing(numPoints) {
+function StatKing(name, numPoints, unitLabel, unitSize, sparseSamples) {
+  this.name = name;
   this.numPoints = numPoints;
+  this.unitLabel = unitLabel;
+  this.unitSize = unitSize;
+  this.sparseSamples = sparseSamples;
   this._empty = new Array(numPoints);
   for (var i = 0; i < numPoints; i++) {
     this._empty[i] = 0;
@@ -367,17 +386,20 @@ function StatKing(numPoints) {
   //  upstream to get 'mo clever and maintain a compact stat range, we don't
   //  need to be clever...
   this.statIdsToStatlogs = {};
+  this.statlogs = sparseSamples ? [] : null;
   this.aggrs = [];
 
   // we will update this on-thee-fly
-  this.chartMax = 16 * 1024 * 1024;
-  this.chartMaxStr = '16M';
+  this.chartMax = 16 * this.unitSize;
+  this.chartMaxStr = '16' + this.unitLabel;
 }
 StatKing.prototype = {
   makeStatlog: function(statId) {
     var stats = this._empty.concat(),
         statlog = new Statlog(this, statId, stats);
     this.statIdsToStatlogs[statId] = statlog;
+    if (this.statlogs)
+      this.statlogs.push(statlog);
     return statlog;
   },
 
@@ -397,16 +419,11 @@ StatKing.prototype = {
    *  zero.)
    */
   processStatisticsStream: function(data) {
-    // - introduce a new zero in all aggregations
-    var i, aggrs = this.aggrs;
-    for (i = 0; i < aggrs.length; i++) {
-      var aggr = aggrs[i];
-      aggr.stats.pop();
-      aggr.stats.unshift(0);
-    }
+    var i, statId, statlog,
+        val, maxValThisCycle = 0;
+    const dlen = data.length, idsToLogs = this.statIdsToStatlogs;
 
     // - process the stream
-    var val, maxValThisCycle = 0;
     function doForward(forwardTo) {
       for (var iTarg = 0; iTarg < forwardTo.length; iTarg++) {
         var fwdStatlog = forwardTo[iTarg], fwdStats = fwdStatlog.stats;
@@ -421,22 +438,55 @@ StatKing.prototype = {
       }
     }
 
-    const dlen = data.length, idsToLogs = this.statIdsToStatlogs;
-    for (i = 0; i < dlen;) {
-      var statId = data[i++], statlog = idsToLogs[statId];
-      val = data[i++];
-      // XXX ignore missing stats for now, but this should really be a
-      //  self-diagnostic criterion.
-      if (!statlog)
-        continue;
-      statlog.stats.pop();
-      statlog.stats.unshift(val);
+    // - introduce a new zero in all aggregations
+    var aggrs = this.aggrs;
+    for (i = 0; i < aggrs.length; i++) {
+      var aggr = aggrs[i];
+      aggr.stats.pop();
+      aggr.stats.unshift(0);
+    }
 
-      if (statlog.forwardTo) {
-        doForward(statlog.forwardTo);
+    // For sparse samples we clock in zeroes for all and our processing
+    //  just increments.
+    if (this.sparseSamples) {
+      var statlogs = this.statlogs;
+      for (i = 0; i < statlogs.length; i++) {
+        statlog = statlogs[i];
+        statlog.stats.pop();
+        statlog.stats.unshift(0);
       }
-      else if (val > maxValThisCycle) {
-        maxValThisCycle = val;
+
+      for (i = 0; i < dlen;) {
+        statId = data[i++];
+        statlog = idsToLogs[statId];
+        val = data[i++];
+        var summedVal = statlog.stats[0] + val;
+        statlog.stats[0] = summedVal;
+        if (summedVal > maxValThisCycle)
+          maxValThisCycle = summedVal;
+
+        if (statlog.forwardTo)
+          doForward(statlog.forwardTo);
+      }
+    }
+    else {
+      for (i = 0; i < dlen;) {
+        statId = data[i++];
+        statlog = idsToLogs[statId];
+        val = data[i++];
+        // XXX ignore missing stats for now, but this should really be a
+        //  self-diagnostic criterion.
+        if (!statlog)
+          continue;
+        statlog.stats.pop();
+        statlog.stats.unshift(val);
+
+        if (statlog.forwardTo) {
+          doForward(statlog.forwardTo);
+        }
+        else if (val > maxValThisCycle) {
+          maxValThisCycle = val;
+        }
       }
     }
 
@@ -450,16 +500,15 @@ StatKing.prototype = {
         maxChartVal = curMaxVal;
     }
     // lower bound the maximum value for sanity purposes
-    const meg = 1024 * 1024;
-    if (maxChartVal < meg)
-      maxChartVal = meg;
+    if (maxChartVal < this.unitSize)
+      maxChartVal = this.unitSize;
 
     // round up to the next megabyte
-    var modMeg = maxChartVal % meg;
-    if (modMeg)
-      maxChartVal += (1024 * 1024 - modMeg);
-    var megs = Math.floor(maxChartVal / meg);
-    this.chartMaxStr = megs + "M";
+    var modVal = maxChartVal % this.unitSize;
+    if (modVal)
+      maxChartVal += (this.unitSize - modVal);
+    var roundedVal = Math.floor(maxChartVal / this.unitSize);
+    this.chartMaxStr = roundedVal + this.unitLabel;
 
     // XXX consider rounding to a nice human readable megabyte size...
     this.chartMax = maxChartVal;
@@ -472,7 +521,10 @@ StatKing.prototype = {
 const NUM_POINTS = 60;
 
 function MemFrobConsumer() {
-  this.statKing = new StatKing(NUM_POINTS);
+  this.statKing = new StatKing('mem', NUM_POINTS, 'M', 1024 * 1024, false);
+  this.cpuStatKing = new StatKing('cpu', NUM_POINTS, 'ms', 1000, true);
+
+  this.hasCPU = false;
 
   this.tabs = [];
   this.tabsByOuterWindowId = {};
@@ -707,7 +759,9 @@ MemFrobConsumer.prototype = {
               originThing = new ExtensionSummary(
                               extInfo.id, extInfo.name, extInfo.description,
                               timestamp,
-                              this.statKing.makeAggrStatlog());
+                              this.statKing.makeAggrStatlog(),
+                              this.hasCPU ?
+                                this.cpuStatKing.makeAggrStatlog() : null);
               this.extensionsById[extInfo.id] = originThing;
               this.extensionsView.add(originThing);
             }
@@ -740,7 +794,9 @@ MemFrobConsumer.prototype = {
             }
             originThing = new OriginSummary(
                             useName, timestamp,
-                            this.statKing.makeAggrStatlog());
+                            this.statKing.makeAggrStatlog(),
+                            this.hasCPU ?
+                              this.cpuStatKing.makeAggrStatlog() : null);
             this.originsByUrl[compData.url] = originThing;
             this.originsView.add(originThing);
           }
@@ -755,6 +811,12 @@ MemFrobConsumer.prototype = {
                timestamp,
                this.statKing.makeStatlog(compData.statId));
       this._compartmentsByStatId[compData.statId] = cmpt;
+
+      if (this.hasCPU && compData.addrStr) {
+        cmpt.cpuStatlog = this.cpuStatKing.makeStatlog(compData.addrStr);
+        cmpt.stats.push(cmpt.cpuStatlog);
+      }
+
       originThing.trackCompartment(cmpt);
     }
 
@@ -779,24 +841,42 @@ MemFrobConsumer.prototype = {
   },
 
   consumeExplicitWireRep: function(wireRep) {
-    var timestamp = new Date(wireRep.timestamp);
+    var memRep = wireRep.mem, cpuRep = wireRep.cpu,
+        timestamp = new Date(memRep.timestamp);
 
+    var hadCPU = this.hasCPU;
+    this.hasCPU = (cpuRep !== null);
+    if (!hadCPU && this.hasCPU) {
+      var self = this;
+      function giveCpuStatsTo(thing) {
+        thing.cpuStatlog = self.cpuStatKing.makeAggrStatlog();
+        thing.stats.push(thing.cpuStatlog);
+        self._issueUiUpdate('summary', thing);
+      }
+      giveCpuStatsTo(this._appCatchAll);
+    }
+
+    // -- memory
     // - compartments (=> origins, extensions, subsystems)
     // Create these prior to windows so we can relate inner windows to their
     //  origins.
-    this._consumeCompartmentsBlock(wireRep.compartments, timestamp);
+    this._consumeCompartmentsBlock(memRep.compartments, timestamp);
 
     // - shells
     // this is going to get merged in to windows soon...
     // do this prior to windows so inner windows can find their shells for
     //  stats gathering purposes.
-    this._consumeShellsBlock(wireRep.shells);
+    this._consumeShellsBlock(memRep.shells);
 
     // - windows (=> tabs, inner windows)
-    this._consumeWindowsBlock(wireRep.windows, timestamp);
+    this._consumeWindowsBlock(memRep.windows, timestamp);
 
+    this.statKing.processStatisticsStream(memRep.statistics);
 
-    this.statKing.processStatisticsStream(wireRep.statistics);
+    // -- cpu
+    if (cpuRep.compartments)
+      this.cpuStatKing.processStatisticsStream(cpuRep.compartments);
+
     this._issueBlanketUiUpdate('statvis');
   },
 

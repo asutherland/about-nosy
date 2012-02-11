@@ -72,7 +72,7 @@ NosyApp.prototype = {
 window.FROBBED = msg.data;
     if (msg.type === 'frobbed') {
       try {
-        this.frobConsumer.consumeExplicitWireRep(msg.data);
+        this.frobConsumer.consumeExplicitWireRep(msg);
         this._uiFocusUpdate();
       }
       catch(ex) {
