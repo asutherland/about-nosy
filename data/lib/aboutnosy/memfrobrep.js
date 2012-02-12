@@ -856,6 +856,7 @@ MemFrobConsumer.prototype = {
       giveCpuStatsTo(this._appCatchAll);
     }
 
+//console.time('chew');
     // -- memory
     // - compartments (=> origins, extensions, subsystems)
     // Create these prior to windows so we can relate inner windows to their
@@ -876,8 +877,11 @@ MemFrobConsumer.prototype = {
     // -- cpu
     if (cpuRep.compartments)
       this.cpuStatKing.processStatisticsStream(cpuRep.compartments);
+//console.timeEnd('chew');
 
+//console.time('statvis-update');
     this._issueBlanketUiUpdate('statvis');
+//console.timeEnd('statvis-update');
   },
 
 };
