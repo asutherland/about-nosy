@@ -446,6 +446,7 @@ StatKing.prototype = {
       aggr.stats.unshift(0);
     }
 
+    // - sparse sample data
     // For sparse samples we clock in zeroes for all and our processing
     //  just increments.
     if (this.sparseSamples) {
@@ -469,6 +470,7 @@ StatKing.prototype = {
           doForward(statlog.forwardTo);
       }
     }
+    // - sample data where every statlog is reported every time
     else {
       for (i = 0; i < dlen;) {
         statId = data[i++];
@@ -875,7 +877,7 @@ MemFrobConsumer.prototype = {
     this.statKing.processStatisticsStream(memRep.statistics);
 
     // -- cpu
-    if (cpuRep.compartments)
+    if (cpuRep && cpuRep.compartments)
       this.cpuStatKing.processStatisticsStream(cpuRep.compartments);
 //console.timeEnd('chew');
 
