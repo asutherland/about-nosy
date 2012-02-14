@@ -1,6 +1,13 @@
-Current milestone: M1
+about:nosy looks like this:
 
-I may skip M2 and M3 for now because:
+![screenshot](http://www.visophyte.org/blog/wp-content/uploads/2012/02/about-nosy-overview-scaled.png)
+
+Blog posts are at:
+http://www.visophyte.org/blog/tag/aboutnosy/
+
+Current milestone: M4, having skipped M2 and M3.
+
+M2 and M3 were skipped because:
 - the GC probes were recently dumbed down; not sure of the fallout
 - GC visualization is different from CPU usage which can just reuse the bars
 
