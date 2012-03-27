@@ -6,14 +6,17 @@ to do:
 
     git submodule update --init --recursive
 
+This will also pull whatever version of the Jetpack/Mozilla add-on SDK we are
+using.
+
 
 # Running / Installing / Building
 
 This is a Jetpack/Mozilla add-on SDK extension, so you need to be sure to
-source "bin/activate" before trying to run us.  But once you have, rather
-than using "cfx", you want to use "./acfx".  You want to do this because we
-need to rsync some files into the data/ directory in order for anything to
-work.
+source "bin/activate" from the addon-sdk/ subdir before trying to run us.
+But once you have, rather than using "cfx", you want to use "./acfx".  You
+want to do this because we need to rsync some files into the data/ directory
+in order for anything to work.
 
 This is necessitated by our libraries and use of git submodules.  We want to
 only include the JS files from the submodule in our XPI and we also want them

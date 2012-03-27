@@ -84,11 +84,11 @@ function makeUrlSortyViewSlice(listObj, sortAttr) {
 /**
  * A tab's memory usage is the sum of all its inner windows' costs.
  */
-function TabSummary(id, createdAt, statlog, topId) {
+function TabSummary(id, createdAt, statlog, url) {
   this.id = id;
   this.createdAt = createdAt;
 
-  this._topId = topId;
+  this.url = url;
   this.topWindow = null;
 
   this.innerWindows = [];
@@ -104,6 +104,15 @@ TabSummary.prototype = {
   kind: 'tab',
   brand: 'tab',
 
+  getInnerWindowByUrl: function(url) {
+    for (var i = 0; i < this.innerWindows.length; i++) {
+      if (this.innerWindows[i].url === url)
+        return this.innerWindows[i];
+    }
+
+    return null;
+  },
+
   getInnerWindowById: function(id) {
     for (var i = 0; i < this.innerWindows.length; i++) {
       if (this.innerWindows[i].id === id)
@@ -114,9 +123,7 @@ TabSummary.prototype = {
   },
 
   get name() {
-    if (this.topWindow)
-      return this.topWindow.url;
-    return '???';
+    return this.url;
   },
 };
 
@@ -127,6 +134,7 @@ TabSummary.prototype = {
  *  by its number of instances.
  */
 function InnerWindowSummary(id, url, tab, createdAt, aggrStatlog, statlog) {
+  // this id is actually our stat id
   this.id = id;
   this.url = this.name = url;
   this.tab = tab;
@@ -545,8 +553,6 @@ function MemFrobConsumer() {
   this.extensions = [];
   this.extensionsById = {};
 
-  this.shellStatsByUrl = {};
-
   this._appCatchAll = new SubsystemSummary("Catch-all", new Date(),
                                            this.statKing.makeAggrStatlog());
   this._appCatchAll.sentinel = true;
@@ -578,7 +584,6 @@ MemFrobConsumer.prototype = {
    */
   _consumeWindowsBlock: function(windows, timestamp) {
     var i, outerId, innerId, statlogger, tab, innerSummary,
-        shellStatsByUrl = this.shellStatsByUrl,
         uiUpdate = this._issueUiUpdate,
         uiUpdateById = this._issueUiUpdateById;
 
@@ -590,7 +595,7 @@ MemFrobConsumer.prototype = {
       tab = new TabSummary(outerData.id,
                            timestamp,
                            this.statKing.makeAggrStatlog(),
-                           outerData.topId);
+                           outerData.url);
       this.tabsByOuterWindowId[outerData.id] = tab;
       this.tabsView.add(tab);
     }
@@ -602,7 +607,7 @@ MemFrobConsumer.prototype = {
 
       tab = this.tabsByOuterWindowId[outerId];
       innerSummary = new InnerWindowSummary(
-                       innerData.id,
+                       innerData.statId,
                        innerData.url,
                        tab,
                        timestamp,
@@ -611,11 +616,6 @@ MemFrobConsumer.prototype = {
       tab.innerWindowsView.add(innerSummary);
       tab.statlog.aggregate(innerSummary.statlog);
 
-      // try and find a shell and aggregate its stats into our own
-      if (shellStatsByUrl.hasOwnProperty(innerData.url)) {
-        innerSummary.statlog.aggregate(shellStatsByUrl[innerData.url]);
-      }
-
       if (innerData.origin &&
           this.originsByUrl.hasOwnProperty(innerData.origin)) {
         var origin = this.originsByUrl[innerData.origin];
@@ -623,13 +623,8 @@ MemFrobConsumer.prototype = {
       }
 
       // (this will only occur durlng the initial outer window add case)
-      if (tab._topId === innerData.id) {
+      if (tab.url === innerData.url) {
         tab.topWindow = innerSummary;
-        // this will affect our sort order...
-        // unfortunately it will also destroy and re-create the widget
-        // (the ui gets updated as a side-effect of the re-recreation)
-        this.tabsView.remove(tab);
-        this.tabsView.add(tab);
         uiUpdateById('deptab', tab.id);
       }
     }
@@ -640,8 +635,8 @@ MemFrobConsumer.prototype = {
 
       // - update topWindow, including generating an update
       tab = this.tabsByOuterWindowId[outerDelta.id];
-      tab._topId = outerDelta.topId;
-      tab.topWindow = tab.getInnerWindowById(tab._topId);
+      tab.url = outerDelta.url;
+      tab.topWindow = tab.getInnerWindowByUrl(tab.url);
       this.tabsView.remove(tab);
       this.tabsView.add(tab);
       // dependent windows may need to update (although they will likely
@@ -649,32 +644,7 @@ MemFrobConsumer.prototype = {
       uiUpdateById('deptab', tab.id);
     }
 
-    for (i = 0; i < windows.modifiedInner.length; i++) {
-      var innerDelta = windows.modifiedInner[i];
-
-      tab = this.tabsByOuterWindowId[innerDelta.outerId];
-      innerSummary = tab.getInnerWindowById(innerDelta.id);
-      // the rename will affect our shell stats. ugh.
-      if (shellStatsByUrl.hasOwnProperty(innerSummary.url)) {
-        innerSummary.statlog.unaggregate(shellStatsByUrl[innerSummary.url]);
-      }
-      innerSummary.changeUrl(innerDelta.url);
-      // try and get stats from the new URL
-      if (shellStatsByUrl.hasOwnProperty(innerSummary.url)) {
-        innerSummary.statlog.aggregate(shellStatsByUrl[innerData.url]);
-      }
-
-      // the rename may affect the ordering...
-      tab.innerWindowsView.remove(innerSummary);
-      tab.innerWindowsView.add(innerSummary);
-      uiUpdate('summary', innerSummary);
-      // if we are the defining inner window, we need to update the tab
-      if (tab.topWindow === innerSummary) {
-        this.tabsView.remove(tab);
-        this.tabsView.add(tab);
-        uiUpdateById('deptab', tab.id);
-      }
-    }
+    // (inner windows are no longer capable of detecting navigation)
 
     var self = this;
     function killInner(innerSummary) {
@@ -702,42 +672,6 @@ MemFrobConsumer.prototype = {
       //  that when killInner calls innerSummary.die)
       killInner(innerSummary);
       tab.innerWindowsView.remove(innerSummary);
-    }
-  },
-
-  /**
-   * Consume layout info.  This tells us about:
-   *
-   * - InnerWindows: We get to proportionately blame them for their layout
-   *    usage.  (Proportionately because we only get a sum for a URL.)
-   * - Origins: We get to blame them for all of the layout usage for a URL.
-   *
-   * We don't surface the shell info directly.  Instead, we just publish the
-   *  shells by their URL and have the inner windows find them and try and
-   *  aggregate their stats.
-   */
-  _consumeShellsBlock: function(shells) {
-    var i, shellStatsByUrl = this.shellStatsByUrl, shellInfo;
-
-    for (i = 0; i < shells.added.length; i++) {
-      shellInfo = shells.added[i];
-
-      shellStatsByUrl[shellInfo.url] = this.statKing.makeStatlog(
-                                         shellInfo.statId);
-    }
-
-    // we don't populate this on the other side anymore
-    /*
-    for (i = 0; i < shells.modified.length; i++) {
-    }
-    */
-
-    for (i = 0; i < shells.removed.length; i++) {
-      shellInfo = shells.removed[i];
-
-      var statlog = shellStatsByUrl[shellInfo.url];
-      statlog.die();
-      delete shellStatsByUrl[shellInfo.url];
     }
   },
 
@@ -864,12 +798,6 @@ MemFrobConsumer.prototype = {
     // Create these prior to windows so we can relate inner windows to their
     //  origins.
     this._consumeCompartmentsBlock(memRep.compartments, timestamp);
-
-    // - shells
-    // this is going to get merged in to windows soon...
-    // do this prior to windows so inner windows can find their shells for
-    //  stats gathering purposes.
-    this._consumeShellsBlock(memRep.shells);
 
     // - windows (=> tabs, inner windows)
     this._consumeWindowsBlock(memRep.windows, timestamp);
