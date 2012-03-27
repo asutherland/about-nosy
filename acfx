@@ -6,4 +6,4 @@ CPCMD="rsync -avL"
 
 $CPCMD deps/wmsy/lib/wmsy data/deps/
 
-cfx "$@"
+cfx --update-url=https://clicky.visophyte.org/files/labs/about-nosy/about-nosy.rdf --templatedir=xpi-template "$@"
